@@ -18,9 +18,22 @@ class Metric(object):
         if opts is None:
             print("defaults")
             opts = {
-                "format": Format.DOUBLE
+                "format": Format.PERCENT
             }
         if opts['format'] == Format.PERCENT:
-            return psutil.cpu_percent()
+            return psutil.cpu_percent(percpu=True)
         else:
-            return psutil.cpu_times()
+            return psutil.cpu_times(percpu=True)
+
+    def memory(self, opts=None):
+        return { 
+            'virtual': psutil.virtual_memory(),
+            'swap': psutil.swap_memory()
+        }
+
+    def disk(self, opts=None):
+        return {
+            'partitions': psutil.disk_partitions(),
+            'usage': psutil.disk_usage('/'),
+            'ios': psutil.disk_io_counters(perdisk=True)
+        }
