@@ -1,0 +1,10 @@
+-r ../requirements.txt
+unittest2
+
+pytest<3.3.0; python_version < '2.7'
+pytest; python_version >= '2.7'
+pytest-cov
+
+pylint
+pep8
+pep257
