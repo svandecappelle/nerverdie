@@ -15,7 +15,7 @@ except ImportError:
 
 # Better to use exec to load the VERSION from alignak/version.py
 # so to not have to import the alignak package:
-with open(os.path.join('alignak', 'version.py')) as fh:
+with open(os.path.join('version.py')) as fh:
     ns = {}
     exec(fh.read(), ns)
     VERSION = ns['VERSION']
