@@ -3,5 +3,9 @@
 
 AVAILABLE_METRICS = [
     'cpu',
-    'mem'
+    'mem',
+    'sensors',
+    'disk',
+    'uptime',
+    'system_info'
 ]

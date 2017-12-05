@@ -30,3 +30,19 @@ def memory():
 def disk():
     """Get disk metrics"""
     return jsonify(Metric().disk())
+
+@app.route('/api/system_info')
+def system_info():
+    """Get system info metrics"""
+    return jsonify(Metric().system_info())
+
+@app.route('/api/uptime')
+def uptime():
+    """Get uptime metrics"""
+    return jsonify(Metric().uptime())
+
+@app.route('/api/sensors')
+def sensors():
+    """Get sensors metrics"""
+    return jsonify(Metric().sensors())
+
