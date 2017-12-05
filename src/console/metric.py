@@ -186,9 +186,9 @@ class Metric(object):
                     "%-4s" % af_map.get(addr.family, addr.family): current
                 })
 
-            output.update({
-                'addr': addresses
-            })
+                network_interface.update({
+                    'addr': addresses
+                })
 
             output.update({nic: network_interface})
             return output
