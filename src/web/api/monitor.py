@@ -46,3 +46,7 @@ def sensors():
     """Get sensors metrics"""
     return jsonify(Metric().sensors())
 
+@app.route('/api/network')
+def network():
+    """Get sensors metrics"""
+    return jsonify(Metric().network())

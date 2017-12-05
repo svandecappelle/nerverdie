@@ -43,3 +43,8 @@ def cpu_format(value, height, width):
     content = """%s\n%s\n%s""" % (separation(width), informations, usage)
 
     return TEMPLATE % ("Cpu usage infos", content)
+
+def network(value, width, height):
+    """
+    network monitor
+    """

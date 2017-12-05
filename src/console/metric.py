@@ -14,6 +14,35 @@ import uuid
 import cpuinfo
 import psutil
 
+af_map = {
+    socket.AF_INET: 'IPv4',
+    socket.AF_INET6: 'IPv6',
+    psutil.AF_LINK: 'MAC',
+}
+
+duplex_map = {
+    psutil.NIC_DUPLEX_FULL: "full",
+    psutil.NIC_DUPLEX_HALF: "half",
+    psutil.NIC_DUPLEX_UNKNOWN: "?",
+}
+
+def bytes2human(n):
+    """
+    >>> bytes2human(10000)
+    '9.8 K'
+    >>> bytes2human(100001221)
+    '95.4 M'
+    """
+    symbols = ('K', 'M', 'G', 'T', 'P', 'E', 'Z', 'Y')
+    prefix = {}
+    for i, s in enumerate(symbols):
+        prefix[s] = 1 << (i + 1) * 10
+    for s in reversed(symbols):
+        if n >= prefix[s]:
+            value = float(n) / prefix[s]
+            return '%.2f%s' % (value, s)
+    return '%.2fB' % (n)
+
 class Format(Enum):
     """All metrics data types"""
     INTEGER = 0
@@ -62,7 +91,7 @@ class Metric(object):
         """Get sensors details"""
         return psutil.sensors_temperatures()
 
-    def system_info(self, opt=None):
+    def system_info(self, opts=None):
         """Get system information"""
         return {
             'hostname': socket.gethostname(),
@@ -81,3 +110,85 @@ class Metric(object):
             'nb_cpus': str(psutil.cpu_count()),
             'nb_physical_cpus': str(psutil.cpu_count(logical=False))
         }
+
+    def network(self, opts=None):
+        """Get network activity"""
+        output = {}
+        stats = psutil.net_if_stats()
+        io_counters = psutil.net_io_counters(pernic=True)
+        for nic, addrs in psutil.net_if_addrs().items():
+            network_interface = {}
+            #print("%s:" % (nic))
+            if nic in stats:
+                st = stats[nic]
+                #print("    stats          :")
+                network_interface.update({'stats': {
+                        'speed': st.speed,
+                        'duplex': duplex_map[st.duplex],
+                        'mtu': st.mtu,
+                        'up': "yes" if st.isup else "no"
+                    }
+                })
+                #print("speed=%sMB, duplex=%s, mtu=%s, up=%s" % (
+                #    st.speed, duplex_map[st.duplex], st.mtu,
+                #    "yes" if st.isup else "no"))
+            if nic in io_counters:
+                io = io_counters[nic]
+                #print("    incoming       : ")
+                network_interface.update({
+                    'incoming': {
+                        'bytes': bytes2human(io.bytes_recv),
+                        'pkts': io.packets_recv,
+                        'errs': io.errin,
+                        'drops': io.dropin
+                    }
+                })
+                #print("bytes=%s, pkts=%s, errs=%s, drops=%s" % (
+                #    bytes2human(io.bytes_recv), io.packets_recv, io.errin,
+                #    io.dropin))
+                network_interface.update({
+                    'outgoing': {
+                        'bytes': bytes2human(io.bytes_sent),
+                        'pkts': io.packets_sent,
+                        'errs': io.errout,
+                        'drops': io.dropout
+                    }
+                })
+                #print("    outgoing       : ")
+                #print("bytes=%s, pkts=%s, errs=%s, drops=%s" % (
+                #    bytes2human(io.bytes_sent), io.packets_sent, io.errout,
+                #    io.dropout))
+            addresses = {}
+            for addr in addrs:
+                
+                #print("    %-4s" % af_map.get(addr.family, addr.family))
+                #print(" address   : %s" % addr.address)
+                current = {
+                    'name' : "%-4s" % af_map.get(addr.family, addr.family),
+                    'address': addr.address
+                }
+                if addr.broadcast:
+                    current.update({
+                        'broadcast': addr.broadcast
+                    })
+                    #print("         broadcast : %s" % addr.broadcast)
+                if addr.netmask:
+                    current.update({
+                        'broadcast': addr.netmask
+                    })
+                    #print("         netmask   : %s" % addr.netmask)
+                if addr.ptp:
+                    current.update({
+                        'broadcast': addr.ptp
+                    })
+                    #print("      p2p       : %s" % addr.ptp)
+                addresses.update({
+                    "%-4s" % af_map.get(addr.family, addr.family): current
+                })
+
+            output.update({
+                'addr': addresses
+            })
+
+            output.update({nic: network_interface})
+            return output
