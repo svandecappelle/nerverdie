@@ -1,3 +1,4 @@
+"""Module metrics provides the metrics single functions to access system state"""
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
@@ -25,7 +26,6 @@ class Metric(object):
     def cpu(self, opts=None):
         """Entry of all cpu's units"""
         if opts is None:
-            print("defaults")
             opts = {
                 "format": Format.PERCENT
             }
@@ -41,7 +41,7 @@ class Metric(object):
 
     def memory(self, opts=None):
         """Get system memory usage"""
-        return { 
+        return {
             'virtual': psutil.virtual_memory(),
             'swap': psutil.swap_memory()
         }
@@ -53,7 +53,7 @@ class Metric(object):
             'usage': psutil.disk_usage('/'),
             'ios': psutil.disk_io_counters(perdisk=True)
         }
-    
+
     def uptime(self, opts=None):
         """Get system uptime"""
         return psutil.boot_time()
