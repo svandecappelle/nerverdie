@@ -19,7 +19,7 @@ class Formatter(FormatterPrinter):
         cpu_use = value.get('usage')
         for cpu_num in range(0, (len(cpu_use))):
             perc = cpu_use[cpu_num]
-            dashes, empty_dashes = super.get_dashes(perc)
+            dashes, empty_dashes = self.get_dashes(perc)
             self.print_line("\tcpu%-2s [%s%s] %5s%%" % (cpu_num, dashes, empty_dashes,
                                               perc))
             #self.print_line("\tcpu%s: %s%% [%s%s]" % (cpuunit + 1, cpu_use[cpuunit]))
