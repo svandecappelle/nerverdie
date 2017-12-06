@@ -130,14 +130,18 @@ def main():
             'text': 'System informations',
             'call': MONIT.sys_info
         },
-        2:  {
-            'text': 'monitor cpu',
+        2: {
+            'text': 'Cpus',
             'call': MONIT.monit_cpu
         },
-        3:  {
-            'text': 'monitor memory',
+        3: {
+            'text': 'Memory',
             'call': MONIT.monit_memory
         },
+        4: {
+            'text': "Network",
+            'call': MONIT.monit_network
+        }
     }, title='Main menu', subtitle='select what to monitor')
 
 if __name__ == '__main__':

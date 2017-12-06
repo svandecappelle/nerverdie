@@ -48,3 +48,35 @@ def network(value, width, height):
     """
     network monitor
     """
+    output = ""
+    for interface in value:
+        output += "\n%s: " % interface
+        properties = value.get(interface)
+        
+        incoming = properties.get('incoming')
+        outgoing = properties.get('outgoing')
+        stats = properties.get('stats')
+        addresses = properties.get('addr')
+        
+        output += "\n\tincoming:\n"
+        output += "\t\tbytes: %s, drops: %s, errs: %s, pkts: %s" % (incoming.get('bytes'), incoming.get('drops'), incoming.get('errs'), incoming.get('pkts'))
+
+        output += "\n\toutgoing\n"
+        output += "\t\tbytes: %s, drops: %s, errs: %s, pkts: %s" % (outgoing.get('bytes'), outgoing.get('drops'), outgoing.get('errs'), outgoing.get('pkts'))
+
+        output += "\n\tstats\n"
+        output += "\t\tspeed: %s, duplex: %s, mtu: %s, up: %s" % (stats.get('speed'), stats.get('duplex'), stats.get('mtu'), stats.get('up'))
+
+        for addr in addresses:
+            output += "\n\tAddr %s" % addr
+            properties = addresses.get(addr)
+
+            output += "\n\t\taddress   : %s" % properties.get('address')
+            if properties.get('broadcast'):
+                output += "\n\t\tbroadcast : %s" % properties.get('broadcast')
+            if properties.get('netmask'):
+                output += "\n\t\tnetmask   : %s" % properties.get('netmask')
+            if properties.get('ptp'):
+                output += "\n\t\tp2p       : %s" % properties.get('ptp')
+
+    return output

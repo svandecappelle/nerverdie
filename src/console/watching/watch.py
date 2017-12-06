@@ -100,5 +100,9 @@ class Printer(object):
         """Monitor cpu"""
         self.show(Metric().cpu, formatters.cpu_format)
 
+    def monit_network(self):
+        """Monitor network"""
+        self.show(Metric().network, formatters.network)
+
     def monit_memory(self):
         """Monitor memory"""

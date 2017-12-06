@@ -118,10 +118,8 @@ class Metric(object):
         io_counters = psutil.net_io_counters(pernic=True)
         for nic, addrs in psutil.net_if_addrs().items():
             network_interface = {}
-            #print("%s:" % (nic))
             if nic in stats:
                 st = stats[nic]
-                #print("    stats          :")
                 network_interface.update({'stats': {
                         'speed': st.speed,
                         'duplex': duplex_map[st.duplex],
@@ -129,12 +127,8 @@ class Metric(object):
                         'up': "yes" if st.isup else "no"
                     }
                 })
-                #print("speed=%sMB, duplex=%s, mtu=%s, up=%s" % (
-                #    st.speed, duplex_map[st.duplex], st.mtu,
-                #    "yes" if st.isup else "no"))
             if nic in io_counters:
                 io = io_counters[nic]
-                #print("    incoming       : ")
                 network_interface.update({
                     'incoming': {
                         'bytes': bytes2human(io.bytes_recv),
@@ -143,9 +137,6 @@ class Metric(object):
                         'drops': io.dropin
                     }
                 })
-                #print("bytes=%s, pkts=%s, errs=%s, drops=%s" % (
-                #    bytes2human(io.bytes_recv), io.packets_recv, io.errin,
-                #    io.dropin))
                 network_interface.update({
                     'outgoing': {
                         'bytes': bytes2human(io.bytes_sent),
@@ -154,13 +145,8 @@ class Metric(object):
                         'drops': io.dropout
                     }
                 })
-                #print("    outgoing       : ")
-                #print("bytes=%s, pkts=%s, errs=%s, drops=%s" % (
-                #    bytes2human(io.bytes_sent), io.packets_sent, io.errout,
-                #    io.dropout))
             addresses = {}
             for addr in addrs:
-                
                 #print("    %-4s" % af_map.get(addr.family, addr.family))
                 #print(" address   : %s" % addr.address)
                 current = {
@@ -171,17 +157,14 @@ class Metric(object):
                     current.update({
                         'broadcast': addr.broadcast
                     })
-                    #print("         broadcast : %s" % addr.broadcast)
                 if addr.netmask:
                     current.update({
                         'broadcast': addr.netmask
                     })
-                    #print("         netmask   : %s" % addr.netmask)
                 if addr.ptp:
                     current.update({
                         'broadcast': addr.ptp
                     })
-                    #print("      p2p       : %s" % addr.ptp)
                 addresses.update({
                     "%-4s" % af_map.get(addr.family, addr.family): current
                 })
@@ -189,6 +172,6 @@ class Metric(object):
                 network_interface.update({
                     'addr': addresses
                 })
-
+            
             output.update({nic: network_interface})
-            return output
+        return output
