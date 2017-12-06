@@ -12,15 +12,15 @@ def separation(width):
     """
     Separation token
     """
-    return "-" * width
+    return u'\u4e00' * (width / 2)
 
 def progress(value, width):
     """
     Progress bar
     """
-    return "#" * int(value * width / 100)
+    return u'\u4e00' * int(value * (width / 2) / 100)
 
-def sysinfo_format(value, height, width):
+def sysinfo(value, height, width):
     """format sysinfo"""
     title = "System infos"
     a_simple_row = """
@@ -30,7 +30,7 @@ def sysinfo_format(value, height, width):
         rows += a_simple_row % (key, value.get(key))
     return TEMPLATE % (title, rows)
 
-def cpu_format(value, height, width):
+def cpu(value, height, width):
     """format cpu"""
     proc_info = value.get('info')
     informations = """\tProcessor: %s\n\tarch: %s\n""" % (proc_info.get('brand'), proc_info.get('arch'))
@@ -44,7 +44,7 @@ def cpu_format(value, height, width):
 
     return TEMPLATE % ("Cpu usage infos", content)
 
-def network(value, width, height):
+def network(value, height, width):
     """
     network monitor
     """
@@ -80,3 +80,7 @@ def network(value, width, height):
                 output += "\n\t\tp2p       : %s" % properties.get('ptp')
 
     return output
+
+def memory(value, height, width):
+    """Format memory"""
+    return 'Memory'

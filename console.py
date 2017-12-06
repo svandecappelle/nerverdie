@@ -3,4 +3,12 @@
 # -*- coding: utf-8 -*-
 from src.console import console
 
-console.main()
+
+def main():
+    try:
+        console.main()
+    except (KeyboardInterrupt, SystemExit):
+        pass
+
+if __name__ == '__main__':
+    main()

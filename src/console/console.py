@@ -21,13 +21,13 @@ class CursedMenu(object):
         self.screen = curses.initscr()
         curses.noecho()
         curses.cbreak()
-        curses.start_color()
+        #curses.start_color()
         self.screen.keypad(1)
 
         # Highlighted and Normal line definitions
-        curses.init_pair(1, curses.COLOR_BLACK, curses.COLOR_WHITE)
-        self.highlighted = curses.color_pair(1)
-        self.normal = curses.A_NORMAL
+        #curses.init_pair(1, curses.COLOR_BLACK, curses.COLOR_WHITE)
+        #self.highlighted = curses.color_pair(1)
+        #self.normal = curses.A_NORMAL
 
 
     def show(self, options, title="Title", subtitle="Subtitle"):
@@ -74,10 +74,10 @@ class CursedMenu(object):
 
         # Display all the menu items, showing the 'pos' item highlighted
         for index in range(len(self.options)):
-            textstyle = self.normal
+            textstyle = curses.A_NORMAL
             if index == self.selected:
-                textstyle = self.highlighted
-            self.screen.addstr(5 + index, 4, "%d - %s" % (index + 1, self.options.get(index).get('text')), textstyle)
+                textstyle = curses.A_BOLD
+            self.screen.addstr(5 + index, 4, "%d - %s" % (index + 1, self.options.get(index).get('text')) , textstyle)
 
         self.screen.refresh()
 
@@ -117,6 +117,7 @@ class CursedMenu(object):
             return
         self.__exit__()
         self.options.get(request.get('id')).get('call')()
+
 
     def __exit__(self):
         curses.endwin()

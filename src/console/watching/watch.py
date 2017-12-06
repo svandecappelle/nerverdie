@@ -94,11 +94,11 @@ class Printer(object):
 
     def sys_info(self):
         """View System infos"""
-        self.show(Metric().system_info, formatters.sysinfo_format)
+        self.show(Metric().system_info, formatters.sysinfo)
 
     def monit_cpu(self):
         """Monitor cpu"""
-        self.show(Metric().cpu, formatters.cpu_format)
+        self.show(Metric().cpu, formatters.cpu)
 
     def monit_network(self):
         """Monitor network"""
@@ -106,3 +106,4 @@ class Printer(object):
 
     def monit_memory(self):
         """Monitor memory"""
+        self.show(Metric().memory, formatters.memory)
