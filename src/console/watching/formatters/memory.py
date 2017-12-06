@@ -12,7 +12,6 @@ class Formatter(FormatterPrinter):
         """Display infos"""
         value = self.value()
         self.reset()
-        self.print_line("testtoto")
         #self.print_line("test", highlight=True)
         virt = value.get('virtual')
         swap = value.get('swap')
