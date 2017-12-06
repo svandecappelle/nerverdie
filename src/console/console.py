@@ -41,7 +41,7 @@ class CursedMenu(object):
 
     def set_options(self, options):
         """Validates that the last option is 'Exit'"""
-        if not options.has_key(-1):
+        if -1 not in options:
             options.update({
                 0: {
                     'text': 'Exit',
@@ -76,7 +76,7 @@ class CursedMenu(object):
         for index in range(len(self.options)):
             textstyle = curses.A_NORMAL
             if index == self.selected:
-                textstyle = curses.A_BOLD
+                textstyle = curses.A_REVERSE
             self.screen.addstr(5 + index, 4, "%d - %s" % (index + 1, self.options.get(index).get('text')) , textstyle)
 
         self.screen.refresh()

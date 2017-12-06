@@ -10,6 +10,8 @@ import platform
 import socket
 import sys
 import uuid
+import subprocess
+import re
 
 import cpuinfo
 import psutil
@@ -25,6 +27,21 @@ duplex_map = {
     psutil.NIC_DUPLEX_HALF: "half",
     psutil.NIC_DUPLEX_UNKNOWN: "?",
 }
+
+def get_processor_name():
+    if platform.system() == "Windows":
+        return platform.processor()
+    elif platform.system() == "Darwin":
+        os.environ['PATH'] = os.environ['PATH'] + os.pathsep + '/usr/sbin'
+        command ="sysctl -n machdep.cpu.brand_string"
+        return subprocess.check_output(command).strip()
+    elif platform.system() == "Linux":
+        command = "cat /proc/cpuinfo"
+        all_info = subprocess.check_output(command, shell=True).strip()
+        for line in iter(all_info.splitlines()):
+            if "model name" in str(line):
+                return re.sub( ".*model name.*:", "", str(line),1)
+    return ""
 
 def bytes2human(n):
     """
@@ -55,16 +72,28 @@ class Metric(object):
     def cpu(self, opts=None):
         """Entry of all cpu's units"""
         if opts is None:
-            opts = {
+            opts = {}
+        if 'format' not in opts: 
+            opts.update({
                 "format": Format.PERCENT
-            }
+            })
+        if 'mode' not in opts:
+            opts.update({
+                "mode": 'complex'
+            })
         usage = None
         if opts['format'] == Format.PERCENT:
             usage = psutil.cpu_percent(percpu=True)
         else:
             usage = psutil.cpu_times(percpu=True)
+        
+        if opts.get('mode') == 'simple':
+            info = get_processor_name()
+        else:
+            info = cpuinfo.get_cpu_info()
+
         return {
-            'info': cpuinfo.get_cpu_info(),
+            'info': info,
             'usage': usage
         }
 

@@ -13,8 +13,8 @@ class Formatter(FormatterPrinter):
         value = self.value()
         proc_info = value.get('info')
         self.print_line("Cpu usage infos")
-        self.print_line("\tProcessor: %s" % proc_info.get('brand'))
-        self.print_line("\tarch: %s" % proc_info.get('arch'))
+        self.print_line("\tProcessor: %s" % proc_info)
+        # self.print_line("\tarch: %s" % proc_info.get('arch'))
 
         cpu_use = value.get('usage')
         for cpu_num in range(0, (len(cpu_use))):
@@ -26,4 +26,6 @@ class Formatter(FormatterPrinter):
             #self.print_line("%s" % progress(cpu_use[cpuunit], self.window.width))
 
     def value(self):
-        return Metric().cpu()
+        return Metric().cpu({
+            'mode': 'simple'
+        })

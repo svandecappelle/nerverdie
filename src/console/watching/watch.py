@@ -4,16 +4,65 @@
 
 from __future__ import unicode_literals # convenient for Python 2
 
+import _thread as thread
 import os
 import time
 import curses
 import atexit
+
+import sys
+import termios
+import fcntl
+
 
 from src.console.watching.formatters import sysinfo
 from src.console.watching.formatters import memory
 from src.console.watching.formatters import network
 from src.console.watching.formatters import cpu
 
+
+
+MAX_FPS = 1
+time_per_frame = 1. / MAX_FPS
+
+
+class _Getch:
+    """Gets a single character from standard input.  Does not echo to the
+screen."""
+    def __init__(self):
+        try:
+            self.impl = _GetchWindows()
+        except ImportError:
+            self.impl = _GetchUnix()
+
+    def __call__(self): return self.impl()
+
+
+class _GetchUnix:
+    def __init__(self):
+        import tty, sys
+
+    def __call__(self):
+        import sys, tty, termios
+        fd = sys.stdin.fileno()
+        old_settings = termios.tcgetattr(fd)
+        try:
+            tty.setraw(sys.stdin.fileno())
+            ch = sys.stdin.read(1)
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+        return ch
+
+
+class _GetchWindows:
+    def __init__(self):
+        import msvcrt
+
+    def __call__(self):
+        import msvcrt
+        return msvcrt.getch()
+
+getch = _Getch()
 
 class FrameWatcher(object):
     def __init__(self):
@@ -46,22 +95,29 @@ class CursesPrinter(object):
         curses.endwin()
 
     def poll(self, interval):
+        """nothing"""
         # sleep some time
         time.sleep(interval)
 
     def watch(self, interval=1):
+        
+        def loop(a_list):
+            time.sleep(1)
+            char = getch() 
+            a_list.append(True)
+            #print("'%s'" % char)
+            #while not getch() != '':
+            #    a_list.append(True)
+        
         cur_interval = 0
-        while True:
+        a_list = []
+        thread.start_new_thread(loop, (a_list,))
+        while not a_list:
             self.poll(cur_interval)
             self.display()
             cur_interval = interval
-            #try:
-            #    key = self.win.getkey()
-            #except: # in no delay mode getkey raise and exeption if no key is press 
-            #    key = None
-            #if key == " ": # of we got a space then break
-            #    break
 
+        self.win.erase()
         curses.endwin()
 
     def display(self):
