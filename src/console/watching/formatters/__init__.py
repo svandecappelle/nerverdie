@@ -27,3 +27,8 @@ class FormatterPrinter(object):
 
     def reset(self):
         self.lineno = 0
+
+    def get_dashes(perc):
+        dashes = "-" * int((float(perc) / 10 * 4))
+        empty_dashes = " " * (40 - len(dashes))
+        return (dashes, empty_dashes)

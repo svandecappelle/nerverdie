@@ -6,11 +6,6 @@ from src.console.watching.formatters import FormatterPrinter
 
 from src.console.metric import Metric
 
-def get_dashes(perc):
-    dashes = "-" * int((float(perc) / 10 * 4))
-    empty_dashes = " " * (40 - len(dashes))
-    return dashes, empty_dashes
-
 class Formatter(FormatterPrinter):
 
     def display(self):
@@ -24,7 +19,7 @@ class Formatter(FormatterPrinter):
         cpu_use = value.get('usage')
         for cpu_num in range(0, (len(cpu_use))):
             perc = cpu_use[cpu_num]
-            dashes, empty_dashes = get_dashes(perc)
+            dashes, empty_dashes = super.get_dashes(perc)
             self.print_line("\tcpu%-2s [%s%s] %5s%%" % (cpu_num, dashes, empty_dashes,
                                               perc))
             #self.print_line("\tcpu%s: %s%% [%s%s]" % (cpuunit + 1, cpu_use[cpuunit]))

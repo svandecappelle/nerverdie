@@ -15,7 +15,7 @@ class Formatter(FormatterPrinter):
         self.reset()
         value = self.value()
         for interface in value:
-            self.print_line("%s: " % interface)
+            self.print_line("%s: " % interface, True)
             properties = value.get(interface)
             
             incoming = properties.get('incoming')
