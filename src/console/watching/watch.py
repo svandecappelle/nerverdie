@@ -35,6 +35,7 @@ class CursesPrinter(object):
     def __init__(self, watcher):
         self.win = curses.initscr()
         self.formatter = watcher(self.win)
+        self.stdscr = curses.initscr()
         atexit.register(self.tear_down)
         curses.endwin()
 
@@ -54,6 +55,14 @@ class CursesPrinter(object):
             self.poll(cur_interval)
             self.display()
             cur_interval = interval
+            #try:
+            #    key = self.win.getkey()
+            #except: # in no delay mode getkey raise and exeption if no key is press 
+            #    key = None
+            #if key == " ": # of we got a space then break
+            #    break
+
+        curses.endwin()
 
     def display(self):
         self.refresh_window()
