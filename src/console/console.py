@@ -115,7 +115,6 @@ class CursedMenu(object):
         """This is where you do things with the request"""
         if request is None:
             return
-        self.__exit__()
         self.options.get(request.get('id')).get('call')()
 
 
