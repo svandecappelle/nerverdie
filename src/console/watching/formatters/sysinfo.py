@@ -8,15 +8,15 @@ from src.console.metric import Metric
 
 class Formatter(FormatterPrinter):
 
+    def __init__(self, window, screen):
+        super(Formatter, self).__init__(window, screen)
+        self.title = "System infos"
+
     def display(self):
         """format sysinfo"""
         self.reset()
         value = self.value()
-        title = "System infos"
         a_simple_row = """%s: %s"""
-        self.print_line("press <ESC> to quit")
-        self.print_line(title)
-        #keys = 
         for key in value.keys():
             self.print_line(a_simple_row % (key, value.get(key)))
 

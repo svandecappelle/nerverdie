@@ -4,7 +4,12 @@
 
 from __future__ import unicode_literals # convenient for Python 2
 
-import _thread as thread
+# Python 3 compliance
+try:
+    import thread
+except ImportError:
+    import _thread as thread
+
 import os
 import time
 import curses
@@ -83,13 +88,14 @@ class CursesPrinter(object):
     
     def __init__(self, watcher):
         self.win = curses.initscr()
-        self.formatter = watcher(self.win)
         self.stdscr = curses.initscr()
+        self.formatter = watcher(self.win, self.stdscr)
         atexit.register(self.tear_down)
         curses.endwin()
 
     def tear_down(self):
         self.win.keypad(0)
+        self.win.refresh()
         curses.nocbreak()
         curses.echo()
         curses.endwin()
@@ -127,6 +133,7 @@ class CursesPrinter(object):
         """Print results on screen by using curses."""
         #curses.endwin()
         self.win.erase()
+        self.stdscr.border(0)
         self.formatter.display()
         self.win.refresh()
 

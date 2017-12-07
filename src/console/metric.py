@@ -16,6 +16,8 @@ import re
 import cpuinfo
 import psutil
 
+from src import utils
+
 af_map = {
     socket.AF_INET: 'IPv4',
     socket.AF_INET6: 'IPv6',
@@ -43,22 +45,6 @@ def get_processor_name():
                 return re.sub( ".*model name.*:", "", str(line),1)
     return ""
 
-def bytes2human(n):
-    """
-    >>> bytes2human(10000)
-    '9.8 K'
-    >>> bytes2human(100001221)
-    '95.4 M'
-    """
-    symbols = ('K', 'M', 'G', 'T', 'P', 'E', 'Z', 'Y')
-    prefix = {}
-    for i, s in enumerate(symbols):
-        prefix[s] = 1 << (i + 1) * 10
-    for s in reversed(symbols):
-        if n >= prefix[s]:
-            value = float(n) / prefix[s]
-            return '%.2f%s' % (value, s)
-    return '%.2fB' % (n)
 
 class Format(Enum):
     """All metrics data types"""
@@ -160,7 +146,7 @@ class Metric(object):
                 io = io_counters[nic]
                 network_interface.update({
                     'incoming': {
-                        'bytes': bytes2human(io.bytes_recv),
+                        'bytes': utils.bytes2human(io.bytes_recv),
                         'pkts': io.packets_recv,
                         'errs': io.errin,
                         'drops': io.dropin
@@ -168,7 +154,7 @@ class Metric(object):
                 })
                 network_interface.update({
                     'outgoing': {
-                        'bytes': bytes2human(io.bytes_sent),
+                        'bytes': utils.bytes2human(io.bytes_sent),
                         'pkts': io.packets_sent,
                         'errs': io.errout,
                         'drops': io.dropout

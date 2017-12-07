@@ -8,6 +8,10 @@ from src.console.metric import Metric
 
 class Formatter(FormatterPrinter):
 
+    def __init__(self, window, screen):
+        super(Formatter, self).__init__(window, screen)
+        self.title = "Network monitor"
+
     def display(self):
         """
         network monitor
