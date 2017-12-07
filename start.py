@@ -9,9 +9,19 @@ import re
 from src.server import APP as app
 from src.server import flaskrun
 
-API_LOCATION="src.web.api"
+ROUTES_FOLDERS = ["src/web"]
 
 from src.settings.logger import LoggerConfigurator
+
+def walk(directory, only_regular_files=True):
+    out = []
+    for root, dirs, files in os.walk(directory, topdown=False):
+        for name in files:
+            out.append(os.path.join(root, name))
+        if not only_regular_files:
+            for name in dirs:
+                out.append(os.path.join(root, name))
+    return out
 
 class Starter(object):
     """ Monitoring application entry point"""
@@ -21,14 +31,13 @@ class Starter(object):
 
     def routing(self):
         """Routing application"""
-        self.logger.info("importing routes %s" % API_LOCATION)
-        routes_location = re.sub(r'\.', r'/', API_LOCATION)
-        self.logger.info(routes_location)
-        for module in os.listdir(routes_location):
-            if re.match(r'.*\.py$', module) and module != '__init__.py':
-                route_file = re.sub(r'\.py', r'', module)
-                self.logger.info("importing routes: %s" % route_file)
-                route_module = importlib.import_module("%s.%s" % (API_LOCATION, route_file))
+        for route_folder in ROUTES_FOLDERS:
+            modules = walk(route_folder)
+            for module in modules:
+                if module.endswith('.py'):
+                    route_file = re.sub(r'/', r'.', module)[:-3]
+                    self.logger.info("importing routes: %s" % route_file)
+                    route_module = importlib.import_module(route_file)
        
     def launch(self):
         """Launch api server"""

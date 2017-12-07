@@ -80,7 +80,7 @@ class FormatterPrinter(object):
         return dashes, empty_dashes
 
     def print_percent(self, title, perc, carriage=True):
-        dashes,blanks = self.get_dashes(perc)
+        dashes, blanks = self.get_dashes(perc)
         self.print_inline(title)
         self.print_inline("[")
         self.print_inline("%s" % dashes, style=STYLE.A_REVERSE)
