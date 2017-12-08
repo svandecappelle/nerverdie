@@ -48,16 +48,16 @@ SINGLE_METRICS_VALUE_LOCATION = {
         'screen': {
             'size': 2,
         },
-        'api': '',
-        'value': '',
+        'api': '/api/partitions',
+        'value': 'usage[0]',
         'formatter': 'bytes'
     },
     'disk-used': {
         'screen': {
             'size': 2,
         },
-        'api': '',
-        'value': '',
+        'api': '/api/partitions',
+        'value': 'usage[1]',
         'formatter': 'bytes'
     },
     'proc-cores': {
