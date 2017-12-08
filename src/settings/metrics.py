@@ -16,7 +16,7 @@ SINGLE_METRICS = {
     ],
     'memory': [
         'available',
-        'used'
+        'total'
     ],
     'disk': [
         'available',
