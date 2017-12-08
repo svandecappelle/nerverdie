@@ -28,7 +28,7 @@ SINGLE_METRICS_VALUE_LOCATION = {
         'formatter': 'time',
         'formatter_opts': "d [days], h [hrs], m [mins], s [sec]"
     },
-    'memory-available': {
+    'memory-total': {
         'screen': {
             'size': 2,
         },
@@ -36,7 +36,7 @@ SINGLE_METRICS_VALUE_LOCATION = {
         'value': 'virtual[0]',
         'formatter': 'bytes'
     },
-    'memory-used': {
+    'memory-available': {
         'screen': {
             'size': 2,
         },
