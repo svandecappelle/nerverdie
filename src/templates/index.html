@@ -1,1 +1,30 @@
-{% extends "base_layout.html" %}
+{% extends "base_layout.html" %} {% block content %}
+<div class="row">
+    {% for metric in single_metrics %}
+    <div class="col s12 m1">
+        <div class="card blue-grey darken-1">
+            <div class="card-content white-text">
+                <small class="truncate">{{ metric.title }}</small>
+                <div id="{{ metric.title.replace(' ','-') }}">
+                </div>
+                {% if metric.api %}
+                    <script type='text/javascript'>
+                        $.get("{{ metric.api }}").done((value)=>{
+                            var parsed_value = value;
+                            {% if metric.value %}
+                                parsed_value = Object.byString(value, '{{ metric.value }}');
+                            {% endif %}
+                            {% if metric.formatter %}
+                                parsed_value = new Formatter('{{ metric.formatter }}', parsed_value).format();
+                            {% endif %}
+                            
+                            $("#{{ metric.title.replace(' ','-') }}").text(parsed_value);
+                        });
+                    </script>
+                {% endif %}
+            </div>
+        </div>
+    </div>
+    {% endfor %}
+</div>
+{% endblock %}

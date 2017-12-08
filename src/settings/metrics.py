@@ -1,4 +1,3 @@
-#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
 AVAILABLE_METRICS = [
@@ -9,3 +8,21 @@ AVAILABLE_METRICS = [
     'uptime',
     'system_info'
 ]
+
+SINGLE_METRICS = {
+    'system': [
+        'status',
+        'uptime'
+    ],
+    'memory': [
+        'available',
+        'used'
+    ],
+    'disk': [
+        'available',
+        'used'
+    ],
+    'proc': [
+        'cores'
+    ]
+}
