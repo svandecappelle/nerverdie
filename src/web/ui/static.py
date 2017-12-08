@@ -1,5 +1,8 @@
 """Static routes"""
 # -*- coding: utf-8 -*-
+
+
+from flask import json, jsonify
 from flask import send_from_directory
 from flask import render_template
 
@@ -8,30 +11,50 @@ from src.settings.metrics import SINGLE_METRICS
 
 SINGLE_METRICS_VALUE_LOCATION = {
     'system-status': {
-        'api': '',
-        'value': ''
+        'api': '/api/system_info',
+        'value': '',
+        'formatter': 'boolean',
+        'formatter_opts': {
+            'true': 'Up',
+            'false': 'Down'
+        }
     },
     'system-uptime': {
+        'screen': {
+            'size': 2,
+        },
         'api': '/api/uptime',
         'value': '',
         'formatter': 'time'
     },
     'memory-available': {
+        'screen': {
+            'size': 2,
+        },
         'api': '/api/memory',
         'value': 'virtual[0]',
         'formatter': 'bytes'
     },
     'memory-used': {
+        'screen': {
+            'size': 2,
+        },
         'api': '/api/memory',
         'value': 'virtual[1]',
         'formatter': 'bytes'
     },
     'disk-available': {
+        'screen': {
+            'size': 2,
+        },
         'api': '',
         'value': '',
         'formatter': 'bytes'
     },
     'disk-used': {
+        'screen': {
+            'size': 2,
+        },
         'api': '',
         'value': '',
         'formatter': 'bytes'
@@ -52,12 +75,11 @@ def index():
     for group_name in SINGLE_METRICS:
         for key in SINGLE_METRICS.get(group_name):
             value_metric = SINGLE_METRICS_VALUE_LOCATION.get("%s-%s" % (group_name, key))
-            single_metrics.append({
-                'title': "%s - %s" % (group_name, key),
-                'api': value_metric.get('api'),
-                'value': value_metric.get('value'),
-                'formatter': value_metric.get('formatter')
-            })
+            ret_metric = {
+                'title': "%s - %s" % (group_name, key)
+            }
+            ret_metric.update(value_metric)
+            single_metrics.append(ret_metric)
     return render_template('index.html', single_metrics=single_metrics)
 
 @app.route('/login')

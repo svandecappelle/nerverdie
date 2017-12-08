@@ -4,7 +4,7 @@
 
 from enum import Enum
 
-import datetime
+import time
 import os
 import platform
 import socket
@@ -99,8 +99,8 @@ class Metric(object):
         }
 
     def uptime(self, opts=None):
-        """Get system uptime"""
-        return psutil.boot_time()
+        """Get system uptime miliseconds"""
+        return (time.time() - psutil.boot_time()) * 1000
 
     def sensors(self, opts=None):
         """Get sensors details"""

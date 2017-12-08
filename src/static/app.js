@@ -32,13 +32,24 @@ function Formatter (formatterType, value) {
                 }
             }
             break;
+        case 'boolean':
+            this.formatter = {
+                format: function formatBoolean(value, opts) {
+                    if (value) {
+                        return opts.true;
+                    }
+                    return opts.false;
+                } 
+            }
+            break;
     }
 }
 
-Formatter.prototype.format = function () {
+Formatter.prototype.format = function (opts) {
     if (this.formatter.humanize) {
         return this.formatter.humanize();
     } else {
-        return this.formatter.format(this.value);
+        console.log(opts);
+        return this.formatter.format(this.value, opts);
     }
 }

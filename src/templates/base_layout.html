@@ -14,24 +14,38 @@
 </head>
 
 <body>
-    <nav>
+    <nav class="brown darken-4">
         <div class="nav-wrapper">
             <a href="#" class="brand-logo">Logo</a>
             <ul id="nav-mobile" class="right hide-on-med-and-down">
                 <li>
-                    <a href="test.html">test</a>
+                    <a href="/node/current">Current Node</a>
                 </li>
                 <li>
-                    <a href="test2.html">test2</a>
+                    <a href="/node/all">All nodes</a>
                 </li>
                 <li>
-                    <a href="test3.html">test3</a>
+                    <a class="dropdown-button" href="#" data-activates='user-menu' data-beloworigin="true">
+                        <i class="material-icons">more_vert</i>
+                    </a>
+
+                    <ul id='user-menu' class='dropdown-content' style="margin-right: 5px">
+                        <li>
+                            <a href="#!" class="brown-text">Preferences</a>
+                        </li>
+                        <li>
+                            <a href="#!" class="brown-text">two</a>
+                        </li>
+                        <li class="divider"></li>
+                        <li>
+                            <a href="#!" class="brown-text">logout</a>
+                        </li>
+                    </ul>
                 </li>
             </ul>
         </div>
     </nav>
-    {% block content %}
-    {% endblock %}
+    {% block content %} {% endblock %}
 </body>
 
 </html>
