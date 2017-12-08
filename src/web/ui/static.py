@@ -25,7 +25,8 @@ SINGLE_METRICS_VALUE_LOCATION = {
         },
         'api': '/api/uptime',
         'value': '',
-        'formatter': 'time'
+        'formatter': 'time',
+        'formatter_opts': "d [days], h [hrs], m [mins], s [sec]"
     },
     'memory-available': {
         'screen': {

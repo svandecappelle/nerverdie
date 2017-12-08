@@ -18,7 +18,11 @@ function Formatter (formatterType, value) {
     this.value = value;
     switch (formatterType) {
         case 'time':
-            this.formatter = moment.duration(value);
+            this.formatter = {
+                format: function formatDuration(value, style){
+                    return moment.duration(value).format(style);
+                }
+            }
             break;
         case 'bytes':
             this.formatter = {
@@ -46,10 +50,5 @@ function Formatter (formatterType, value) {
 }
 
 Formatter.prototype.format = function (opts) {
-    if (this.formatter.humanize) {
-        return this.formatter.humanize();
-    } else {
-        console.log(opts);
-        return this.formatter.format(this.value, opts);
-    }
+    return this.formatter.format(this.value, opts);
 }
