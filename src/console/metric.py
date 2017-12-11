@@ -83,6 +83,24 @@ class Metric(object):
             'usage': usage
         }
 
+    def cpu_load(self, opts=None):
+        if opts is None:
+            opts = {}
+        if 'format' not in opts: 
+            opts.update({
+                "format": Format.PERCENT
+            })
+        if 'mode' not in opts:
+            opts.update({
+                "mode": 'complex'
+            })
+        usage = None
+        if opts['format'] == Format.PERCENT:
+            usage = psutil.cpu_percent(percpu=True)
+        else:
+            usage = psutil.cpu_times(percpu=True)
+        return usage
+
     def memory(self, opts=None):
         """Get system memory usage"""
         return {

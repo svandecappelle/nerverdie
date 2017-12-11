@@ -66,6 +66,19 @@ SINGLE_METRICS_VALUE_LOCATION = {
     }
 }
 
+TIMELIINE_METRICS = {
+    'cpu0': {
+        'title': 'cpu0',
+        'api': '/api/cpu/load',
+        'value': '[0]'
+    },
+    'cpu1': {
+        'title': 'cpu1',
+        'api': '/api/cpu/load',
+        'value': '[1]'
+    }
+}
+
 @app.route('/js/<path:path>')
 def send_js(path):
     return send_from_directory('js', path)
@@ -73,6 +86,8 @@ def send_js(path):
 @app.route('/')
 def index():
     single_metrics = []
+    timed_metrics = []
+
     for group_name in SINGLE_METRICS:
         for key in SINGLE_METRICS.get(group_name):
             value_metric = SINGLE_METRICS_VALUE_LOCATION.get("%s-%s" % (group_name, key))
@@ -81,7 +96,12 @@ def index():
             }
             ret_metric.update(value_metric)
             single_metrics.append(ret_metric)
-    return render_template('index.html', single_metrics=single_metrics)
+
+    for time_metric in TIMELIINE_METRICS:
+        metric = TIMELIINE_METRICS.get("%s" % time_metric)
+        timed_metrics.append(metric)
+    print(timed_metrics)
+    return render_template('index.html', single_metrics=single_metrics, timed_metrics=timed_metrics)
 
 @app.route('/login')
 def login():

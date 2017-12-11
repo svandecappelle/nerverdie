@@ -1,11 +1,11 @@
 {% extends "base_layout.html" %} {% block content %}
 <div class="row">
     {% for metric in single_metrics %}
-    {% if metric.screen and metric.screen.get('size') %}
-        <div class="col s12 m6 l{{ metric.screen.get('size') }}">
+        {% if metric.screen and metric.screen.get('size') %}
+            <div class="col s12 m6 l{{ metric.screen.get('size') }}">
         {% else %}
-        <div class="col s12 m6 l1">
-    {% endif %}
+            <div class="col s12 m6 l1">
+        {% endif %}
         <div class="card blue-grey darken-1">
             <div class="card-content white-text">
                 <small class="truncate">{{ metric.title }}</small>
@@ -35,6 +35,27 @@
             </div>
         </div>
     </div>
+    {% endfor %}
+
+    {% for metric in timed_metrics %}
+        {% if metric.screen and metric.screen.get('size') %}
+            <div class="col s12 m6 l{{ metric.screen.get('size') }}">
+        {% else %}
+            <div class="col s12 m12 l6">
+        {% endif %}
+
+        <div class="card blue-grey darken-1">
+            <div class="card-content white-text">
+                <small class="truncate">{{ metric.title }}</small>
+                <div id="{{ metric.title.replace(' ','-') }}">
+                    <script>
+                        var chart = new Chart("{{metric.title.replace(' ', '-') }}");
+                        chart.build('{{ metric.value }}');
+                        </script>
+                    </div>
+                </div>
+            </div>
+        </div>
     {% endfor %}
 </div>
 {% endblock %}
