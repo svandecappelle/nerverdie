@@ -67,15 +67,10 @@ SINGLE_METRICS_VALUE_LOCATION = {
 }
 
 TIMELIINE_METRICS = {
-    'cpu0': {
+    'cpus': {
         'title': 'cpu0',
         'api': '/api/cpu/load',
-        'value': '[0]'
-    },
-    'cpu1': {
-        'title': 'cpu1',
-        'api': '/api/cpu/load',
-        'value': '[1]'
+        'value': '[0],[1],[2],[3]'
     }
 }
 

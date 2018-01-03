@@ -13,6 +13,22 @@ Object.byString = function(o, s) {
     return o;
 }
 
+function MetricParser (value) {
+    this.value = value;
+}
+
+MetricParser.prototype.parse = function (parsing) {
+    if (parsing.lastIndexOf(',') !== -1) {
+        var values = [];
+        parsing.split(',').forEach(element => {
+            values.push(Object.byString(this.value, element))
+        });
+        return values;
+    }
+
+    return Object.byString(this.value, parsing);
+}
+
 
 function Formatter (formatterType, value) {
     this.value = value;
@@ -56,95 +72,79 @@ Formatter.prototype.format = function (opts) {
 
 function Chart (id) {
     this.id = id;
-    this.data = [];
+    this.countCalls = 0;
+    this.duration = 2000;
+    this.maxTicksCount = 50;
+    this.animationDuration = 1000;
 };
 
 Chart.prototype.build = function build (value) {
     this.value = value;
-    this.timeoutId = 0;
     
-    this.margin = {top: 20, right: 20, bottom: 30, left: 20};
-    this.width = $("#" + this.id).outerWidth() - this.margin.left - this.margin.right;
-    this.height = 320 - this.margin.top - this.margin.bottom;
-    
-    this.parseDate = d3.timeParse("%H:%M:%S");
-    
-    this.xcenter =  this.width / 2;
-
-    // Start
-    this.update();
-}
-
-Chart.prototype.render = function render() {
-    var that = this;
-
-    d3.select("#" + this.id + " > svg")
-        .remove();
-
-    var svg = d3.select("#" + this.id).append("svg")
-        .attr("width", this.width + this.margin.left + this.margin.right)
-        .attr("height", this.height + this.margin.top + this.margin.bottom + 40)
-        .append("g")
-        .attr("transform", "translate(" + this.margin.left + "," + this.margin.top + ")");
-
-    d3.json('/api/cpu/load', function(d){
-        that.callRender(svg, {
-            date: new Date(),
-            cpu:  Object.byString(d, that.value)
-        });
-        
-        that.timeoutId = setTimeout(function(){
-            that.update();
-        }, 2000);
-        
+    $('#' + this.id).css({
+        "background-color": "#FFF",
+        "box-shadow": "1px 1px 3px rgba(0,0,0,0.5)",
+        "border-radius": "2px"
     });
+    this.chart = c3.generate({
+        bindto: '#' + this.id,
+        data: {
+            x: 'x',
+            columns: [
+                ['cpu0'],
+                ['cpu1']
+            ],
+            types: {
+                'cpu0': 'area-spline',
+                'cpu1': 'area-spline',
+                'cpu2': 'area-spline',
+                'cpu3': 'area-spline'
+            },
+            groups: [['cpu0', 'cpu1', 'cpu2', 'cpu3']]
+        },
+        axis: {
+            x: {
+                type: 'timeseries',
+                tick: {
+                    format: '%Hh %Mm %Ss'
+                }
+            }
+        }
+    });
+    this.tick();
 }
 
-Chart.prototype.callRender = function callRender (chart, data) {
-    var x = d3.scaleTime()
-        .rangeRound([0, this.width]);
+Chart.prototype.tick = function render() {
+    this.countCalls += 1;
+    $.get('/api/cpu/load', (data) => {
+
+        var current_data = [];
+        current_data.push(['x', moment()]);
+        this.series().forEach((element, index) => {
+            var parser = new MetricParser(data);
+            var parsed_value = parser.parse(this.value);
+            current_data.push(['cpu' + index, parsed_value[index]]);
+        });
+
+        var to = 0;
+        if (this.countCalls > this.maxTicksCount){
+            to = this.countCalls - this.maxTicksCount;
+        }
+        this.chart.flow({
+            columns: current_data,
+            lenght: 1,
+            to: to,
+            duration: this.animationDuration,
+            done: () => {
+                setTimeout( () => {
+                    this.tick();
+                }, this.duration);
+            }
+        });
+    });
     
-    var y = d3.scaleLinear()
-        .rangeRound([this.height, 0]);
-    
-    var line = d3.line()
-        .x(function(d) { return x(d.date); })
-        .y(function(d) { return y(d.cpu); });
-
-    this.data.push(data);
-
-    x.domain(d3.extent(this.data, function(d) { return d.date; }));
-    y.domain(d3.extent(this.data, function(d) { return d.cpu; }));
-    
-    g = chart.append("g").attr("transform", "translate(" + this.margin.left + "," + this.margin.top + ")");
-    g.append("g")
-        .attr("transform", "translate(0," + this.height + ")")
-        .call(d3.axisBottom(x))
-        .attr("class", "chart-axis")
-        .select(".domain")
-        .remove();
-
-    g.append("g")
-        .call(d3.axisLeft(y))
-        .attr("class", "chart-axis")
-        .append("text")
-            .attr("transform", "rotate(-90)")
-            .attr("y", 6)
-            .attr("dy", "0.71em")
-            .attr("text-anchor", "end")
-            .text("Value");
-
-    g.append("path")
-        .datum(this.data)
-        .attr("class", "chart")
-        .attr("fill", "none")
-        .attr("stroke-linejoin", "round")
-        .attr("stroke-linecap", "round")
-        .attr("stroke-width", 1.5)
-        .attr("d", line);
 }
 
-Chart.prototype.update =  function update() {
-    this.render();
-    var that = this;
+Chart.prototype.series = function () {
+    return this.value.split(',');
 }

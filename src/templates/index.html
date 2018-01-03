@@ -15,7 +15,8 @@
                             $.get("{{ metric.api }}").done((value)=>{
                                 var parsed_value = value;
                                 {% if metric.value %}
-                                    parsed_value = Object.byString(value, '{{ metric.value }}');
+                                    var parser = new MetricParser(value);
+                                    parsed_value = parser.parse('{{ metric.value }}');
                                 {% endif %}
                                 {% if metric.formatter %}
                                     {% if metric.formatter_opts %}
