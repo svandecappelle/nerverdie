@@ -19,7 +19,7 @@ def cpu():
     return jsonify(Metric().cpu())
 
 @app.route('/api/cpu/load')
-def cpu_mean():
+def cpu_load():
     """Get cpu metrics"""
     return jsonify(Metric().cpu_load())
 
@@ -27,6 +27,11 @@ def cpu_mean():
 def memory():
     """Get memory metrics"""
     return jsonify(Metric().memory())
+
+@app.route('/api/memory/load')
+def memory_loads():
+    """Get cpu metrics"""
+    return jsonify(Metric().memory_loads())
 
 @app.route('/api/partitions')
 def disk():

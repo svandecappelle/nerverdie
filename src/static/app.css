@@ -14,4 +14,13 @@
 
 .chart-axis text{
     fill: white;
-}  
+}
+
+.top-right {
+    top: 0px;
+    right: 0px;
+}
+
+.absolute{
+    position: absolute;
+}

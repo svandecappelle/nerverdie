@@ -68,9 +68,20 @@ SINGLE_METRICS_VALUE_LOCATION = {
 
 TIMELIINE_METRICS = {
     'cpus': {
-        'title': 'cpu0',
         'api': '/api/cpu/load',
-        'value': '[0],[1],[2],[3]'
+        'series': 'cpu0,cpu1,cpu2,cpu3',
+        'options': {
+            'title': 'cpus'
+        }
+    },
+    'memory': {
+        'api': '/api/memory/load',
+        'series': 'virtual,swap',
+        'options': {
+            'title': 'memory used',
+            'type': 'area-spline',
+            'stack': True
+        }
     }
 }
 

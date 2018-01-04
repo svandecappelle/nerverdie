@@ -7,27 +7,38 @@
             <div class="col s12 m6 l1">
         {% endif %}
         <div class="card blue-grey darken-1">
+            <!--<a class="btn-floating waves-effect waves-light top-right absolute" id="{{ metric.title.replace(' ','-') }}-refresh"><i class="material-icons">refresh</i></a>-->
+            <i class="white-text waves-effect waves-light top-right absolute material-icons" id="{{ metric.title.replace(' ','-') }}-refresh">refresh</i>
+
             <div class="card-content white-text">
-                <small class="truncate">{{ metric.title }}</small>
+                <small class="truncate">{{ metric.title }}</small>    
                 <div id="{{ metric.title.replace(' ','-') }}">
                     {% if metric.api %}
                         <script type='text/javascript'>
-                            $.get("{{ metric.api }}").done((value)=>{
-                                var parsed_value = value;
-                                {% if metric.value %}
-                                    var parser = new MetricParser(value);
-                                    parsed_value = parser.parse('{{ metric.value }}');
-                                {% endif %}
-                                {% if metric.formatter %}
-                                    {% if metric.formatter_opts %}
-                                        parsed_value = new Formatter('{{ metric.formatter }}', parsed_value).format({{ metric.formatter_opts | tojson | safe }});
-                                    {% else %}
-                                        parsed_value = new Formatter('{{ metric.formatter }}', parsed_value).format();
-                                    {% endif %}
-                                {% endif %}
-                                
-                                $("#{{ metric.title.replace(' ','-') }}").text(parsed_value);
-                            });
+                            {
+                                function load() {
+                                    $.get("{{ metric.api }}").done((value)=>{
+                                        var parsed_value = value;
+                                        {% if metric.value %}
+                                            var parser = new MetricParser(value);
+                                            parsed_value = parser.parse('{{ metric.value }}');
+                                        {% endif %}
+                                        {% if metric.formatter %}
+                                            {% if metric.formatter_opts %}
+                                                parsed_value = new Formatter('{{ metric.formatter }}', parsed_value).format({{ metric.formatter_opts | tojson | safe }});
+                                            {% else %}
+                                                parsed_value = new Formatter('{{ metric.formatter }}', parsed_value).format();
+                                            {% endif %}
+                                        {% endif %}
+                                        $("#{{ metric.title.replace(' ','-') }}").text(parsed_value);
+                                    });
+                                }
+
+                                $("#{{ metric.title.replace(' ','-') }}-refresh").click(() => {
+                                    load();
+                                });
+                                load();
+                            }
                         </script>
                     {% else %}
                         N/A
@@ -45,13 +56,19 @@
             <div class="col s12 m12 l6">
         {% endif %}
 
-        <div class="card blue-grey darken-1">
-            <div class="card-content white-text">
-                <small class="truncate">{{ metric.title }}</small>
-                <div id="{{ metric.title.replace(' ','-') }}">
+        <div class="card">
+            <div class="card-content">
+                <small class="truncate">{{ metric.options.title }}</small>
+                <i class="waves-effect waves-light top-right absolute material-icons" id="{{ metric.options.title.replace(' ','-') }}-refresh">refresh</i>
+                <div id="{{ metric.options.title.replace(' ','-') }}">
                     <script>
-                        var chart = new Chart("{{metric.title.replace(' ', '-') }}");
-                        chart.build('{{ metric.value }}');
+                        var chart = new Chart("{{metric.options.title.replace(' ', '-') }}");
+                        {% if metric.options %}
+                            chart.build('{{ metric.series }}', '{{ metric.api }}', {{ metric.options | tojson | safe }});
+                        {% else %}
+                            chart.build('{{ metric.series }}', '{{ metric.api }}', { title: "" });
+                        {% endif %}
+                        
                         </script>
                     </div>
                 </div>

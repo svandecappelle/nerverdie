@@ -99,14 +99,32 @@ class Metric(object):
             usage = psutil.cpu_percent(percpu=True)
         else:
             usage = psutil.cpu_times(percpu=True)
-        return usage
+        
+        i = 0
+        output = {
+            'date': time.strftime('%Y-%m-%d %H:%M:%S')
+        }
+        for cpu_usage in usage:
+            output['cpu%d' % i] =  cpu_usage
+            i += 1
+
+        return [output]
 
     def memory(self, opts=None):
         """Get system memory usage"""
         return {
+            'date': time.strftime('%Y-%m-%d %H:%M:%S'),
             'virtual': psutil.virtual_memory(),
             'swap': psutil.swap_memory()
         }
+    
+    def memory_loads(self, opts=None):
+        """Get system memory usage"""
+        return [{
+            'date': time.strftime('%Y-%m-%d %H:%M:%S'),
+            'virtual': psutil.virtual_memory()[3],
+            'swap': psutil.swap_memory()[1]
+        }]
 
     def disk(self, opts=None):
         """Get system disk partitions & usage"""

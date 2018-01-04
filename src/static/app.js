@@ -73,34 +73,45 @@ Formatter.prototype.format = function (opts) {
 function Chart (id) {
     this.id = id;
     this.countCalls = 0;
-    this.duration = 2000;
+    this.duration = 850;
     this.maxTicksCount = 50;
-    this.animationDuration = 1000;
+    this.animationDuration = 850;
 };
 
-Chart.prototype.build = function build (value) {
-    this.value = value;
-    
-    $('#' + this.id).css({
-        "background-color": "#FFF",
-        "box-shadow": "1px 1px 3px rgba(0,0,0,0.5)",
-        "border-radius": "2px"
+Chart.prototype.build = function build (series, route, options) {
+    this._series = series;
+    this.route = route;
+    this.title = options.title;
+
+    $("#" + this.id + '-refresh').click(() => {
+        this.tick(false);
     });
+
+    var groups = undefined;
+    if (options.stack) {
+        groups = [this.series()];
+    }
+
+    var type = 'spline';
+    if (options.type){
+        type = options.type
+    }
+
     this.chart = c3.generate({
         bindto: '#' + this.id,
+        point: {
+            show: false
+        },
         data: {
-            x: 'x',
-            columns: [
-                ['cpu0'],
-                ['cpu1']
-            ],
-            types: {
-                'cpu0': 'area-spline',
-                'cpu1': 'area-spline',
-                'cpu2': 'area-spline',
-                'cpu3': 'area-spline'
+            url: this.route,
+            mimeType: 'json',
+            keys: {
+                x: 'date',
+                value: this.series()
             },
-            groups: [['cpu0', 'cpu1', 'cpu2', 'cpu3']]
+            xFormat: '%Y-%m-%d %H:%M:%S',
+            type: type,
+            groups: groups
         },
         axis: {
             x: {
@@ -114,37 +125,37 @@ Chart.prototype.build = function build (value) {
     this.tick();
 }
 
-Chart.prototype.tick = function render() {
+Chart.prototype.tick = function render (autorefresh) {
     this.countCalls += 1;
-    $.get('/api/cpu/load', (data) => {
+    setTimeout( () => {
+        $.get(this.route, (data) => {
+            var serie = this.series()[0];
 
-        var current_data = [];
-        current_data.push(['x', moment()]);
-        this.series().forEach((element, index) => {
-            var parser = new MetricParser(data);
-            var parsed_value = parser.parse(this.value);
-            current_data.push(['cpu' + index, parsed_value[index]]);
-        });
+            var to = this.chart.xs()[serie][0];
 
-        var to = 0;
-        if (this.countCalls > this.maxTicksCount){
-            to = this.countCalls - this.maxTicksCount;
-        }
-        this.chart.flow({
-            columns: current_data,
-            lenght: 1,
-            to: to,
-            duration: this.animationDuration,
-            done: () => {
-                setTimeout( () => {
-                    this.tick();
-                }, this.duration);
+            if (this.countCalls > this.maxTicksCount){
+                to = this.chart.xs()[serie][this.countCalls - this.maxTicksCount];
             }
+            this.chart.flow({
+                json: data,
+                keys: {
+                    x: 'date',
+                    value: this.series()
+                },
+                xFormat: '%Y-%m-%d %H:%M:%S',
+                lenght: 1,
+                to: to,
+                duration: this.animationDuration,
+                done: () => {
+                    if (autorefresh == undefined || autorefresh){
+                        this.tick();
+                    }
+                }
+            });
         });
-    });
-    
+    }, this.duration);
 }
 
 Chart.prototype.series = function () {
-    return this.value.split(',');
+    return this._series.split(',');
 }
