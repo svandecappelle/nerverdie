@@ -117,6 +117,7 @@ Chart.prototype.build = function build (series, route, options) {
             x: {
                 type: 'timeseries',
                 tick: {
+                    fit: true,
                     format: '%Hh %Mm %Ss'
                 }
             }
