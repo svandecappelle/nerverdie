@@ -1,6 +1,6 @@
-"""Console monit menu"""
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
+"""Console monit menu"""
 from src.console import console
 
 
