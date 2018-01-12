@@ -73,9 +73,9 @@ Formatter.prototype.format = function (opts) {
 function Chart (id) {
     this.id = id;
     this.countCalls = 0;
-    this.duration = 850;
+    this.duration = 1250;
     this.maxTicksCount = 50;
-    this.animationDuration = 850;
+    this.animationDuration = 0;
 };
 
 Chart.prototype.build = function build (series, route, options) {
@@ -127,16 +127,18 @@ Chart.prototype.build = function build (series, route, options) {
 }
 
 Chart.prototype.tick = function render (autorefresh) {
-    this.countCalls += 1;
-    setTimeout( () => {
+    setInterval( () => {
         $.get(this.route, (data) => {
             var serie = this.series()[0];
-
-            var to = this.chart.xs()[serie][0];
-
-            if (this.countCalls > this.maxTicksCount){
-                to = this.chart.xs()[serie][this.countCalls - this.maxTicksCount];
+            
+            if (!this.to){
+                this.to = this.chart.xs()[serie][0];     
             }
+            
+            if (this.countCalls > this.maxTicksCount){
+                this.to = this.chart.xs()[serie][this.countCalls - this.maxTicksCount];
+            }
+            
             this.chart.flow({
                 json: data,
                 keys: {
@@ -145,12 +147,13 @@ Chart.prototype.tick = function render (autorefresh) {
                 },
                 xFormat: '%Y-%m-%d %H:%M:%S',
                 lenght: 1,
-                to: to,
-                duration: this.animationDuration,
+                to: this.to,
+                //duration: this.animationDuration,
                 done: () => {
-                    if (autorefresh == undefined || autorefresh){
+                    this.countCalls += 1;
+                    /*if (autorefresh == undefined || autorefresh){
                         this.tick();
-                    }
+                    }*/
                 }
             });
         });
