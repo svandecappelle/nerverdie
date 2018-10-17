@@ -3,6 +3,8 @@ name = "pypi"
 verify_ssl = true
 url = "https://pypi.org/simple"
 
+[dev-packages]
+
 [requires]
 python_version = "3.5"
 
@@ -22,10 +24,6 @@ singledispatch = "==3.4.0.3"
 six = "==1.11.0"
 wrapt = "==1.10.11"
 "backports.functools_lru_cache" = "==1.4"
-Flask = "==0.12.2"
+Flask = ">=0.12.3"
 "Jinja2" = "==2.10"
 MarkupSafe = "==1.0"
-Werkzeug = "==0.12.2"
-schedule = "*"
-
-[dev-packages]
