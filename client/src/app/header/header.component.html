@@ -1,0 +1,40 @@
+<div>
+  <mat-toolbar color="primary" class="mat-elevation-z6">
+    <span>Neverdie</span>
+    <span class="sub-title">monitor servers</span>
+
+    <nav>
+      <button mat-icon-button routerLink="/">
+        <mat-icon aria-label="Home">home</mat-icon>
+      </button>
+      <button mat-icon-button routerLink="/admin">
+        <mat-icon aria-label="Admin panel">settings</mat-icon>
+      </button>
+      <button mat-icon-button routerLink="/reload">
+        <mat-icon aria-label="Reload library">autorenew</mat-icon>
+      </button>
+    </nav>
+
+    <span class="spacer"></span>
+    
+    <mat-form-field class="search">
+      <input matInput (change)="search($event.target.value)">
+      <mat-icon matSuffix>search</mat-icon>
+    </mat-form-field>
+
+    <button mat-icon-button [matMenuTriggerFor]="menu">
+      <mat-icon>more_vert</mat-icon>
+    </button>
+    <mat-menu #menu="matMenu">
+      <button mat-menu-item (click)="onLogout()" *ngIf="isLoggedIn$ | async">
+        <mat-icon>exit_to_app</mat-icon>
+        <span>Logout</span>
+      </button>
+
+      <button mat-menu-item routerLink="/profile">
+        <mat-icon>account_circle</mat-icon>
+        <span>Edit profile</span>
+      </button>
+    </mat-menu>
+  </mat-toolbar>
+</div>

@@ -1,0 +1,28 @@
+.spacer {
+    flex: 1 1 auto;
+}
+
+.sub-title {
+	font-size: 0.5rem;
+	vertical-align: text-bottom;
+	align-self: flex-end;
+}
+
+:host {
+	position: fixed;
+	top: 0;
+	left: 0;
+	right: 0;
+	z-index: 90;
+}
+
+.search {
+	font-size: 0.8em;
+	.mat-icon{
+		font-size: 100%;
+	}
+
+	.mat-input-infix.mat-form-field-infix{
+		padding: 2px 0px;
+	}
+}

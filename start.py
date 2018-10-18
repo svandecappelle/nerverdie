@@ -6,12 +6,12 @@ import os
 import importlib
 import re
 
-from src.server import APP as app
-from src.server import flaskrun
+from server.application import APP as app
+from server.application import flaskrun
 
-ROUTES_FOLDERS = ["src/web"]
+ROUTES_FOLDERS = ["server/web"]
 
-from src.settings.logger import LoggerConfigurator
+from server.settings.logger import LoggerConfigurator
 
 def walk(directory, only_regular_files=True):
     out = []
