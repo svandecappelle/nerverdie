@@ -4,6 +4,7 @@ import { FormsModule, ReactiveFormsModule } from '@angular/forms';
 
 import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
 import { MaterialModule } from '../modules/material.module';
+import { HighchartsChartModule } from 'highcharts-angular';
 
 import { HomeComponent } from '../views/home/home.component';
 import { LoginComponent } from '../views/login/login.component';
@@ -13,6 +14,7 @@ import { AppRoutingModule } from './app-routing.module';
 
 import { AuthenticationService } from '../services/authentication.service'
 import { AlertService } from '../services/alert.service'
+ 
 @NgModule({
   declarations: [
     LoginComponent,
@@ -24,6 +26,7 @@ import { AlertService } from '../services/alert.service'
     FormsModule,
     ReactiveFormsModule,
     MaterialModule,
+    HighchartsChartModule,
     ComponentsModule,
     AppRoutingModule
   ],

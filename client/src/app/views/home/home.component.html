@@ -1,2 +1,18 @@
 <div class="content">
+
+    <h2 class="mat-headline">Current server status</h2>
+
+    <mat-grid-list cols="6" rowHeight="100px">
+        <mat-grid-tile *ngFor="let tile of tiles" [colspan]="tile.cols" [rowspan]="tile.rows" [style.background]="tile.color">
+            {{getSimpleIndicator(tile.text)}}
+        </mat-grid-tile>
+    </mat-grid-list>
+
+    <h2 class="mat-headline">Current server loads</h2>
+    <highcharts-chart 
+    [Highcharts]="Highcharts"
+    [options]="chartOptions"
+
+    style="width: 100%; height: 400px; display: block;"
+    ></highcharts-chart>
 </div>

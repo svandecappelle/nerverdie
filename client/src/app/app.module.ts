@@ -5,6 +5,8 @@ import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
 import { MaterialModule } from './modules/material.module';
 import { FormsModule, ReactiveFormsModule } from '@angular/forms';
 
+import { HighchartsChartModule } from 'highcharts-angular'; 
+
 import { AppComponent } from './app.component';
 import { AppRoutingModule } from './modules/app-routing.module';
 import { HttpClientModule } from '@angular/common/http';
@@ -28,11 +30,12 @@ import { AuthGuard } from './guards/index';
     BrowserModule,
     BrowserAnimationsModule,
     MaterialModule,
+    HighchartsChartModule,
     FormsModule,
     ReactiveFormsModule,
     AppRoutingModule,
     HttpClientModule,
-    ViewsModule
+    ViewsModule,
   ],
   providers: [
     AuthenticationService,

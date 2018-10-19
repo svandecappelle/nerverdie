@@ -24,26 +24,21 @@ def invalid_credentials(e):
 @app.route('/api/auth', methods=['GET'])
 @login_required
 def get_user_logged():
-    return jsonify({'token': 'token', 'duration': 600, 'user': { 'uid': 'uid'}})
+    return jsonify({'token': 'token', 'duration': 600, 'user': { 'uid': 'uid'}, 'connected': True})
 
 
 @app.route('/api/auth/login', methods=['GET', 'POST'])
 def autentication():
+    # Yet in dev
     if request.method == 'POST':
         if request.json['password'] == 'password' and request.json['username'] == 'admin':
             session['logged_in'] = True
             # session['user'] = 
+        elif request.json['token'] == 'fl?8dnh432fmfokf1!sfz54fxgk84x:wx':
+            session['logged_in'] = True
         else:
             raise AuthenticationError
-    return jsonify({'token': 'token', 'duration': 600, 'user': { 'uid': 'uid'}})
-    '''user = User.verify_auth_token(username_or_token)
-    if not user:
-        # try to authenticate with username/password
-        user = User.query.filter_by(username=username_or_token).first()
-        if not user or not user.verify_password(password):
-            return False
-    g.user = user
-    return True'''
+    return jsonify({'token': 'token', 'duration': 600, 'user': { 'uid': 'uid'}, 'connected': True})
 
 
 @app.route('/api/auth/logout', methods=['GET', 'POST'])

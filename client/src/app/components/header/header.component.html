@@ -5,13 +5,13 @@
 
     <nav>
       <button mat-icon-button routerLink="/">
-        <mat-icon aria-label="Home">home</mat-icon>
+        <mat-icon aria-label="Home">dashboard</mat-icon>
+      </button>
+      <button mat-icon-button routerLink="/all_nodes">
+        <mat-icon aria-label="Reload library">view_module</mat-icon>
       </button>
       <button mat-icon-button routerLink="/admin">
         <mat-icon aria-label="Admin panel">settings</mat-icon>
-      </button>
-      <button mat-icon-button routerLink="/reload">
-        <mat-icon aria-label="Reload library">autorenew</mat-icon>
       </button>
     </nav>
 
@@ -26,7 +26,7 @@
       <mat-icon>more_vert</mat-icon>
     </button>
     <mat-menu #menu="matMenu">
-      <button mat-menu-item (click)="onLogout()" *ngIf="isLoggedIn$ | async">
+      <button mat-menu-item (click)="onLogout()">
         <mat-icon>exit_to_app</mat-icon>
         <span>Logout</span>
       </button>
