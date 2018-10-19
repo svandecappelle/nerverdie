@@ -18,6 +18,8 @@ import { ViewsModule } from './modules/views.module';
 
 import { AuthenticationService } from './services/authentication.service';
 import { AlertService } from './services/alert.service';
+import { DataService } from './services/data.service';
+
 import { AuthGuard } from './guards/index';
 
 @NgModule({
@@ -41,6 +43,7 @@ import { AuthGuard } from './guards/index';
     AuthenticationService,
     AlertService,
     AuthGuard,
+    DataService,
   ],
   bootstrap: [AppComponent]
 })

@@ -1,6 +1,7 @@
 import { Component, OnInit } from '@angular/core';
 import * as Highcharts from 'highcharts';
 
+import { DataService } from '../../services/data.service';
 
 export interface Tile {
   color: string;
@@ -16,13 +17,15 @@ export interface Tile {
 })
 export class HomeComponent implements OnInit {
 
+  private data: any = {};
+
   tiles: Tile[] = [
-    {text: 'Status', cols: 1, rows: 1, color: 'lightblue'},
-    {text: 'Uptime', cols: 1, rows: 1, color: 'lightgreen'},
-    {text: 'Memory', cols: 1, rows: 1, color: 'lightblue'},
-    {text: 'Storage', cols: 1, rows: 1, color: 'lightblue'},
-    {text: 'Cpu', cols: 1, rows: 1, color: 'lightblue'},
-    {text: 'Other', cols: 1, rows: 1, color: 'lightblue'},
+    {text: 'status', cols: 1, rows: 1, color: 'lightblue'},
+    {text: 'uptime', cols: 1, rows: 1, color: 'lightgreen'},
+    {text: 'memory', cols: 1, rows: 1, color: 'lightblue'},
+    {text: 'storage', cols: 1, rows: 1, color: 'lightblue'},
+    {text: 'cpu', cols: 1, rows: 1, color: 'lightblue'},
+    {text: 'other', cols: 1, rows: 1, color: 'lightblue'},
   ];
 
   Highcharts = Highcharts; // required
@@ -35,25 +38,40 @@ export class HomeComponent implements OnInit {
   oneToOneFlag = true; // optional boolean, defaults to false
   runOutsideAngular = false; // optional boolean, defaults to false
 
-  constructor() {
+  constructor(private service: DataService) {
   }
 
   ngOnInit() {
+    this.tiles.forEach((tile) => {
+      this.getSimpleIndicator(tile.text);
+    });
   }
 
   getSimpleIndicator(name) {
-    if (name === "Status") {
-      return "Up";
-    } else if (name === "Uptime") {
-      return "1d 4h 56min";
-    } else if (name === "Memory") {
-      return "8Go";
+    if (name === "status") {
+      this.service.get('metrics').subscribe((data) => {
+        this.data[name] = 'Up';
+      }, () => {
+        this.data[name] = 'Down';
+      });
+    } else if (name === "uptime") {
+      this.service.get(name).subscribe((data) => {
+        this.data[name] = new Date(data);
+      });
+    } else if (name === "memory") {
+      this.service.get(name).subscribe((data) => {
+        this.data[name] = data.virtual[0] / 1024 / 1024 + 'Mo';
+      });
     } else if (name === "Storage") {
-      return "250Go";
-    } else if (name === "Cpu") {
-      return "4Cores";
+      "250Go";
+    } else if (name === "cpu") {
+      this.service.get(name).subscribe((data) => {
+        this.data[name] = data.info.count + ' cores';
+      });
     } else {
-      return "";
+      this.service.get(name).subscribe((data) => {
+        this.data[name] = data;
+      });
     }
   }
 }
