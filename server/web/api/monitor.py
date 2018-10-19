@@ -3,12 +3,14 @@
 import json
 
 from server.application import APP as app
+from server.application import login_required
 from server.settings.metrics import AVAILABLE_METRICS
 from server.console.metric import Metric
 
 from flask import jsonify
 
 @app.route('/api/metrics')
+@login_required
 def metrics():
     """List available metrics supported by server"""
     return jsonify(AVAILABLE_METRICS)

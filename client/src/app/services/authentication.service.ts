@@ -19,6 +19,8 @@ export class AuthenticationService {
     constructor(private http: HttpClient, private router: Router) {
         this.http.get<any>('/api/auth').subscribe((data) => {
             this.loggedIn.next(data.connected);
+        }, () => {
+            this.loggedIn.next(false);
         });
     }
 

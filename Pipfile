@@ -4,6 +4,7 @@ verify_ssl = true
 url = "https://pypi.org/simple"
 
 [dev-packages]
+pylint = "*"
 
 [packages]
 astroid = "==1.5.3"
@@ -26,3 +27,6 @@ Flask = ">=0.12.3"
 MarkupSafe = "==1.0"
 scapy = "*"
 schedule = "*"
+flask-httpauth = "*"
+flask-sqlalchemy = "*"
+passlib = "*"

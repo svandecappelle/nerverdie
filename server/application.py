@@ -3,13 +3,27 @@
 
 import os
 
-from flask import Flask
+from flask import Flask, session, redirect
 from server.daemon import Daemon
+
+from functools import wraps
 
 tmpl_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'templates')
 APP = Flask(__name__, template_folder=tmpl_dir)
 
 import optparse
+
+
+APP.config['SECRET_KEY'] = 'the quick brown fox jumps over the lazy dog'
+
+def login_required(f):
+    @wraps(f)
+    def decorated_function(*args, **kwargs):
+        if not session or not session['logged_in']:
+            return redirect('/login')
+        return f(*args, **kwargs)
+    return decorated_function
+
 
 def flaskrun(app, default_host="127.0.0.1", 
                   default_port="5000"):

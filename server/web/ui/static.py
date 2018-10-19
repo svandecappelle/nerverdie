@@ -18,9 +18,8 @@ static_file_dir = os.path.join(os.path.dirname(os.path.abspath(__file__)), '../.
 def serve_dir_directory_index():
     return send_from_directory(static_file_dir, 'index.html')
 
-@app.route('/<path:path>')
-def serve_application(path, methods=['GET']):
-    print(os.path.isfile(os.path.join(static_file_dir, path)))
+@app.route('/<path:path>', methods=['GET'])
+def serve_application(path):
     if not os.path.isfile(os.path.join(static_file_dir, path)):
         path = 'index.html'
         print(path)
