@@ -3,15 +3,20 @@ import { NgModule } from '@angular/core';
 
 import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
 import { MaterialModule } from './modules/material.module';
+import { FormsModule, ReactiveFormsModule } from '@angular/forms';
 
 import { AppComponent } from './app.component';
 import { AppRoutingModule } from './modules/app-routing.module';
+import { HttpClientModule } from '@angular/common/http';
 
 import { HeaderComponent } from './components/header/header.component';
 import { ContentComponent } from './components/content/content.component';
 
 import { ViewsModule } from './modules/views.module';
-import { ComponentsModule } from './modules/components.module';
+
+import { AuthenticationService } from './services/authentication.service';
+import { AlertService } from './services/alert.service';
+import { AuthGuard } from './guards/index';
 
 @NgModule({
   declarations: [
@@ -23,10 +28,17 @@ import { ComponentsModule } from './modules/components.module';
     BrowserModule,
     BrowserAnimationsModule,
     MaterialModule,
-    ViewsModule,
-    AppRoutingModule
+    FormsModule,
+    ReactiveFormsModule,
+    AppRoutingModule,
+    HttpClientModule,
+    ViewsModule
   ],
-  providers: [],
+  providers: [
+    AuthenticationService,
+    AlertService,
+    AuthGuard,
+  ],
   bootstrap: [AppComponent]
 })
 export class AppModule { }

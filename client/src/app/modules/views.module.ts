@@ -11,6 +11,8 @@ import { LoginComponent } from '../views/login/login.component';
 import { ComponentsModule } from './components.module';
 import { AppRoutingModule } from './app-routing.module';
 
+import { AuthenticationService } from '../services/authentication.service'
+import { AlertService } from '../services/alert.service'
 @NgModule({
   declarations: [
     LoginComponent,
@@ -25,6 +27,9 @@ import { AppRoutingModule } from './app-routing.module';
     ComponentsModule,
     AppRoutingModule
   ],
-  providers: [],
+  providers: [
+    AuthenticationService,
+    AlertService,
+  ],
 })
 export class ViewsModule { }
