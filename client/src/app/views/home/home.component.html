@@ -4,15 +4,25 @@
 
     <mat-grid-list cols="6" rowHeight="100px">
         <mat-grid-tile *ngFor="let tile of tiles" [colspan]="tile.cols" [rowspan]="tile.rows" [style.background]="tile.color">
-            {{data[tile.text]}}
+            <app-indicator [type]="tile.type" [value]="tile.value" [tile]="tile"></app-indicator>
         </mat-grid-tile>
     </mat-grid-list>
 
     <h2 class="mat-headline">Current server loads</h2>
-    <highcharts-chart 
-    [Highcharts]="Highcharts"
+    <highcharts-chart *ngIf="chartOptions"
+    [Highcharts]="HighchartsCPU"
     [options]="chartOptions"
+    [callbackFunction]="chartCallback"
 
-    style="width: 100%; height: 400px; display: block;"
+    style="width: 50%; height: 300px; display: inline-block;"
+    ></highcharts-chart>
+
+    <!--<h2 class="mat-headline">Current server memory state</h2>-->
+    <highcharts-chart *ngIf="chartMemoryOptions"
+    [Highcharts]="HighchartsMemory"
+    [options]="chartMemoryOptions"
+    [callbackFunction]="chartMemoryCallback"
+
+    style="width: 50%; height: 300px; display: inline-block;"
     ></highcharts-chart>
 </div>

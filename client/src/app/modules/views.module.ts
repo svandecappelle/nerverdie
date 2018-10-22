@@ -13,8 +13,8 @@ import { ComponentsModule } from './components.module';
 import { AppRoutingModule } from './app-routing.module';
 
 import { AuthenticationService } from '../services/authentication.service'
-import { AlertService } from '../services/alert.service'
- 
+import { AlertService } from '../services/alert.service';
+
 @NgModule({
   declarations: [
     LoginComponent,

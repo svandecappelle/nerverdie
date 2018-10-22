@@ -39,7 +39,8 @@ const splineChart = {
     },
     exporting: {
         enabled: true
-    }
+    },
+    series: []
 };
 
 export class ChartsOption {

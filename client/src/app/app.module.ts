@@ -26,7 +26,7 @@ import { AuthGuard } from './guards/index';
   declarations: [
     AppComponent,
     ContentComponent,
-    HeaderComponent,
+    HeaderComponent
   ],
   imports: [
     BrowserModule,

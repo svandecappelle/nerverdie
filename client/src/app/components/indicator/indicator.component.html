@@ -1,0 +1,15 @@
+<div *ngIf="type === 'date'">
+  {{value | amCalendar }}
+</div>
+<div *ngIf="type === 'duration'">
+  {{ value / 1000 | amDuration: 'seconds' }}
+</div>
+<div *ngIf="type === 'status'" [class.ok]="formatStatus(value) === 'OK'" [class.ko]="formatStatus(value) === 'KO'">
+  {{ formatStatus(value) }}
+</div>
+<div *ngIf="type === 'string'">
+  {{value}}
+</div>
+<div *ngIf="type === 'number'">
+  {{ formatNumber(value | number) }}
+</div>
