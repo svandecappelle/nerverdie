@@ -186,7 +186,7 @@ export class HomeComponent implements OnInit {
       }
       return data;
     }())
-  }], 'Memory load', 'area');;
+  }], 'Memory load', 'area');
   chartMemoryOptions = this.chartMemory.options;
   chartMemoryCallback = (chart) => {
     this.chartMemory.pull.subscribe((initialized) => {
@@ -202,9 +202,81 @@ export class HomeComponent implements OnInit {
     });
   };
 
+  // Network
+  HighchartsNetwork = Highcharts; // required
+  // Memory chart:
+  chartNetwork = new ChartsOption([{
+    name: 'Incoming',
+    data: (function () {
+      // generate an array of random data
+      // TODO get data history from server side
+      const data = [],
+        time = (new Date()).getTime();
+      let i;
+      for (i = -49; i <= 0; i += 1) {
+        data.push({
+          x: time + i * 1000,
+          y: 0
+        });
+      }
+      return data;
+    }())
+  },
+  {
+    name: 'Outgoing',
+    data: (function () {
+      // generate an array of random data
+      // TODO get data history from server side
+      const data = [],
+        time = (new Date()).getTime();
+      let i;
+      for (i = -49; i <= 0; i += 1) {
+        data.push({
+          x: time + i * 1000,
+          y: 0
+        });
+      }
+      return data;
+    }())
+  }], 'Memory load', 'area');
+  chartNetworkOptions = this.chartNetwork.options;
+  chartNetworkCallback = (chart) => {
+    this.chartNetwork.pull.subscribe((initialized) => {
+      if (initialized && !this.pending['network']) {
+        const x = (new Date()).getTime();
+        this.pending['network'] = true;
+        this.service.get('network').subscribe((data) => {
+          
+          let incomingBytes = data['enp0s31f6'].incoming.bytes;
+          let outgoingBytes = data['enp0s31f6'].outgoing.bytes;
+
+          if (incomingBytes.includes('M')){
+            incomingBytes = parseInt(incomingBytes.substring(0, incomingBytes.length - 2));
+            incomingBytes = incomingBytes * 1024;
+          } else if (incomingBytes.includes('K')){
+            incomingBytes = parseInt(incomingBytes.substring(0, incomingBytes.length - 2));
+          }
+
+          if (outgoingBytes.includes('M')){
+            outgoingBytes = parseInt(outgoingBytes.substring(0, outgoingBytes.length - 2));
+            outgoingBytes = outgoingBytes * 1024;
+          } else if (outgoingBytes.includes('K')) {
+            outgoingBytes = parseInt(outgoingBytes.substring(0, outgoingBytes.length - 2));
+          }
+          
+          this.chartNetwork.series[0].addPoint([x, incomingBytes], true, true);
+          this.chartNetwork.series[1].addPoint([x, outgoingBytes], true, true);
+          this.pending['network'] = false;
+        });
+      }
+    });
+  };
+
+
   private pending = {
     cpu: false,
     memory: false,
+    network: false,
   };
 
   constructor(private service: DataService) {
