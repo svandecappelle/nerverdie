@@ -10,11 +10,22 @@ const splineChart = {
         marginRight: 10,
         events: {
             load: function () {}
-        }
+        },
     },
-
-    time: {
-        useUTC: false
+    plotOptions: {
+        time: {
+            useUTC: false
+        },
+        area: {
+            marker: {
+                enabled: false
+            }
+        },
+        spline: {
+            marker: {
+                enabled: false
+            }
+        }
     },
     xAxis: {
         type: 'datetime',
@@ -49,8 +60,11 @@ export class ChartsOption {
     private puller: BehaviorSubject<any> = new BehaviorSubject<any>(false);
     private chart: any;
 
-    constructor(init: any, title: string) {
+    constructor(init: any, title: string, type: string) {
         this.options = splineChart;
+        if (type) {
+            this.options.chart.type = type;
+        }
         this.options.title = {
             text: title
         };

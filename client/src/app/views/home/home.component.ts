@@ -110,7 +110,7 @@ export class HomeComponent implements OnInit {
 
           cpuNum += 1;
         });
-        this.chart = new ChartsOption(cpus, 'CPU load');
+        this.chart = new ChartsOption(cpus, 'CPU load', 'spline');
         this.chartOptions = this.chart.options;
         return data.info.count + ' cores';
       }
@@ -186,7 +186,7 @@ export class HomeComponent implements OnInit {
       }
       return data;
     }())
-  }], 'Memory load');;
+  }], 'Memory load', 'area');;
   chartMemoryOptions = this.chartMemory.options;
   chartMemoryCallback = (chart) => {
     this.chartMemory.pull.subscribe((initialized) => {
