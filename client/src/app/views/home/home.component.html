@@ -9,28 +9,7 @@
     </mat-grid-list>
 
     <h2 class="mat-headline">Current server loads</h2>
-    <highcharts-chart *ngIf="chartOptions"
-    [Highcharts]="HighchartsCPU"
-    [options]="chartOptions"
-    [callbackFunction]="chartCallback"
-
-    style="width: 50%; height: 300px; display: inline-block;"
-    ></highcharts-chart>
-
-    <!--<h2 class="mat-headline">Current server memory state</h2>-->
-    <highcharts-chart *ngIf="chartMemoryOptions"
-    [Highcharts]="HighchartsMemory"
-    [options]="chartMemoryOptions"
-    [callbackFunction]="chartMemoryCallback"
-
-    style="width: 50%; height: 300px; display: inline-block;"
-    ></highcharts-chart>
-
-    <highcharts-chart *ngIf="chartNetworkOptions"
-    [Highcharts]="HighchartsNetwork"
-    [options]="chartNetworkOptions"
-    [callbackFunction]="chartNetworkCallback"
-
-    style="width: 100%; height: 300px; display: inline-block;"
-    ></highcharts-chart>
+    <app-chart *ngIf="cpu" [series]="cpu.series" title="CPU" [onPull]='cpu.onPull' [endPoint]="'cpu'"></app-chart>
+    <app-chart *ngIf="memory" [series]="memory.series" title="Memory" [onPull]='memory.onPull' [endPoint]="'memory'"></app-chart>
+    <app-chart [series]="network.series" title="Network" [onPull]='network.onPull' [endPoint]="'network'" [width]="'100%'"></app-chart>
 </div>

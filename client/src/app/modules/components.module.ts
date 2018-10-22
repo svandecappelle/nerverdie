@@ -6,13 +6,18 @@ import { BrowserAnimationsModule } from '@angular/platform-browser/animations';
 import { MaterialModule } from '../modules/material.module';
 import { MomentModule } from 'ngx-moment';
 
+import { HighchartsChartModule } from 'highcharts-angular';
 import { AppRoutingModule } from './app-routing.module';
 
 import { IndicatorComponent } from '../components/indicator/indicator.component';
+import { ChartComponent } from '../components/chart/chart.component';
+import { DataService } from '../services/data.service';
+
 
 @NgModule({
   declarations: [
-    IndicatorComponent
+    IndicatorComponent,
+    ChartComponent
   ],
   imports: [
     BrowserModule,
@@ -20,12 +25,16 @@ import { IndicatorComponent } from '../components/indicator/indicator.component'
     FormsModule,
     ReactiveFormsModule,
     MaterialModule,
+    HighchartsChartModule,
     MomentModule,
     AppRoutingModule
   ],
   exports: [
-    IndicatorComponent
+    IndicatorComponent,
+    ChartComponent
   ],
-  providers: [],
+  providers: [
+    DataService
+  ],
 })
 export class ComponentsModule { }

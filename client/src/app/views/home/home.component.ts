@@ -1,7 +1,4 @@
 import { Component, OnInit } from '@angular/core';
-import * as Highcharts from 'highcharts';
-
-import { ChartsOption } from './charts';
 import { DataService } from '../../services/data.service';
 
 export interface Tile {
@@ -92,26 +89,15 @@ export class HomeComponent implements OnInit {
         data.usage.forEach(element => {
           cpus.push({
             name: 'Cpu load ' + cpuNum,
-            data: (function () {
-              // generate an array of random data
-              // TODO get data history from server side
-              const data = [],
-                time = (new Date()).getTime();
-              let i;
-              for (i = -49; i <= 0; i += 1) {
-                data.push({
-                  x: time + i * 1000,
-                  y: 0
-                });
-              }
-              return data;
-            }())
+            data: this.generateEmptyDatas()
           });
 
           cpuNum += 1;
+
+          this.initCpus(cpus);
         });
-        this.chart = new ChartsOption(cpus, 'CPU load', 'spline');
-        this.chartOptions = this.chart.options;
+        // this.chart = new ChartsOption(cpus, 'CPU load', 'spline');
+        // this.chartOptions = this.chart.options;
         return data.info.count + ' cores';
       }
     },
@@ -130,153 +116,59 @@ export class HomeComponent implements OnInit {
     },
   ];
 
-  // CPU chart:
-  HighchartsCPU = Highcharts; // required
-  chart;
-  chartOptions;
-  chartCallback = (chart) => {
-    this.chart.pull.subscribe((initialized) => {
-      if (initialized && !this.pending['cpu']) {
-        const x = (new Date()).getTime();
-        this.pending['cpu'] = true;
-        this.service.get('cpu').subscribe((data) => {
-          let i = 0;
-          data.usage.forEach(element => {
-            this.chart.series[i].addPoint([x, data.usage[i]], true, true);
-            i += 1;
-          });
-          this.pending['cpu'] = false;
-        });
-      }
-    });
+  cpu: any;
+  memory = {
+    onPull: (data, chart) => {
+      const x = (new Date()).getTime();
+      chart.series[0].addPoint([x, data.virtual[3]], true, true);
+      chart.series[1].addPoint([x, data.swap[0]], true, true);
+    },
+    series:
+      [{
+        name: 'Used',
+        data: this.generateEmptyDatas()
+      },
+      {
+        name: 'Swap',
+        data: this.generateEmptyDatas()
+      }]
   };
 
-  HighchartsMemory = Highcharts; // required
-  // Memory chart:
-  chartMemory = new ChartsOption([{
-    name: 'Used',
-    data: (function () {
-      // generate an array of random data
-      // TODO get data history from server side
-      const data = [],
-        time = (new Date()).getTime();
-      let i;
-      for (i = -49; i <= 0; i += 1) {
-        data.push({
-          x: time + i * 1000,
-          y: 0
-        });
-      }
-      return data;
-    }())
-  },
-  {
-    name: 'Swap',
-    data: (function () {
-      // generate an array of random data
-      // TODO get data history from server side
-      const data = [],
-        time = (new Date()).getTime();
-      let i;
-      for (i = -49; i <= 0; i += 1) {
-        data.push({
-          x: time + i * 1000,
-          y: 0
-        });
-      }
-      return data;
-    }())
-  }], 'Memory load', 'area');
-  chartMemoryOptions = this.chartMemory.options;
-  chartMemoryCallback = (chart) => {
-    this.chartMemory.pull.subscribe((initialized) => {
-      if (initialized && !this.pending['memory']) {
-        const x = (new Date()).getTime();
-        this.pending['memory'] = true;
-        this.service.get('memory').subscribe((data) => {
-          this.chartMemory.series[0].addPoint([x, data.virtual[3]], true, true);
-          this.chartMemory.series[1].addPoint([x, data.swap[0]], true, true);
-          this.pending['memory'] = false;
-        });
-      }
-    });
-  };
+  network = {
+    onPull: (data, chart) => {
+      const x = (new Date()).getTime();
+      const keys = Object.keys(data);
+      // console.log(data);
 
-  // Network
-  HighchartsNetwork = Highcharts; // required
-  // Memory chart:
-  chartNetwork = new ChartsOption([{
-    name: 'Incoming',
-    data: (function () {
-      // generate an array of random data
-      // TODO get data history from server side
-      const data = [],
-        time = (new Date()).getTime();
-      let i;
-      for (i = -49; i <= 0; i += 1) {
-        data.push({
-          x: time + i * 1000,
-          y: 0
-        });
+      let incomingBytes = data[keys[0]].incoming.bytes;
+      let outgoingBytes = data[keys[0]].outgoing.bytes;
+
+      if (incomingBytes.includes('M')) {
+        incomingBytes = parseInt(incomingBytes.substring(0, incomingBytes.length - 2));
+        incomingBytes = incomingBytes * 1024;
+      } else if (incomingBytes.includes('K')) {
+        incomingBytes = parseInt(incomingBytes.substring(0, incomingBytes.length - 2));
       }
-      return data;
-    }())
-  },
-  {
-    name: 'Outgoing',
-    data: (function () {
-      // generate an array of random data
-      // TODO get data history from server side
-      const data = [],
-        time = (new Date()).getTime();
-      let i;
-      for (i = -49; i <= 0; i += 1) {
-        data.push({
-          x: time + i * 1000,
-          y: 0
-        });
+
+      if (outgoingBytes.includes('M')) {
+        outgoingBytes = parseInt(outgoingBytes.substring(0, outgoingBytes.length - 2));
+        outgoingBytes = outgoingBytes * 1024;
+      } else if (outgoingBytes.includes('K')) {
+        outgoingBytes = parseInt(outgoingBytes.substring(0, outgoingBytes.length - 2));
       }
-      return data;
-    }())
-  }], 'Memory load', 'area');
-  chartNetworkOptions = this.chartNetwork.options;
-  chartNetworkCallback = (chart) => {
-    this.chartNetwork.pull.subscribe((initialized) => {
-      if (initialized && !this.pending['network']) {
-        const x = (new Date()).getTime();
-        this.pending['network'] = true;
-        this.service.get('network').subscribe((data) => {
-          
-          let incomingBytes = data['enp0s31f6'].incoming.bytes;
-          let outgoingBytes = data['enp0s31f6'].outgoing.bytes;
 
-          if (incomingBytes.includes('M')){
-            incomingBytes = parseInt(incomingBytes.substring(0, incomingBytes.length - 2));
-            incomingBytes = incomingBytes * 1024;
-          } else if (incomingBytes.includes('K')){
-            incomingBytes = parseInt(incomingBytes.substring(0, incomingBytes.length - 2));
-          }
-
-          if (outgoingBytes.includes('M')){
-            outgoingBytes = parseInt(outgoingBytes.substring(0, outgoingBytes.length - 2));
-            outgoingBytes = outgoingBytes * 1024;
-          } else if (outgoingBytes.includes('K')) {
-            outgoingBytes = parseInt(outgoingBytes.substring(0, outgoingBytes.length - 2));
-          }
-          
-          this.chartNetwork.series[0].addPoint([x, incomingBytes], true, true);
-          this.chartNetwork.series[1].addPoint([x, outgoingBytes], true, true);
-          this.pending['network'] = false;
-        });
-      }
-    });
-  };
-
-
-  private pending = {
-    cpu: false,
-    memory: false,
-    network: false,
+      chart.series[0].addPoint([x, incomingBytes], true, true);
+      chart.series[1].addPoint([x, outgoingBytes], true, true);
+    },
+    series:
+      [{
+        name: 'Incoming',
+        data: this.generateEmptyDatas()
+      },
+      {
+        name: 'Outgoing',
+        data: this.generateEmptyDatas()
+      }]
   };
 
   constructor(private service: DataService) {
@@ -300,5 +192,34 @@ export class HomeComponent implements OnInit {
     }, () => {
       tile.value = 1;
     });
+  }
+
+  generateEmptyDatas() {
+    // generate an array of random data
+    // TODO get data history from server side
+    const data = [],
+      time = (new Date()).getTime();
+    let i;
+    for (i = -49; i <= 0; i += 1) {
+      data.push({
+        x: time + i * 1000,
+        y: 0
+      });
+    }
+    return data;
+  }
+
+  initCpus(cpus: Array<any>) {
+    this.cpu = {
+      onPull: (data, chart) => {
+        const x = (new Date()).getTime();
+        let i = 0;
+        data.usage.forEach(element => {
+          chart.series[i].addPoint([x, data.usage[i]], true, true);
+          i += 1;
+        });
+      },
+      series: cpus
+    };
   }
 }
