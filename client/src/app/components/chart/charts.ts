@@ -1,10 +1,12 @@
 import { BehaviorSubject } from 'rxjs';
 
+const UPDATE_TIME = 3 * 1000;
 export class ChartsOption {
 
     options = {
         chart: {
             type: 'spline',
+            zoomType: 'x',
             animation: false,
             // animation: Highcharts.svg, // don't animate in old IE
             marginRight: 10,
@@ -77,7 +79,7 @@ export class ChartsOption {
     public onLoad() {
         setInterval(() => {
             this.puller.next(true);
-        }, 1000);
+        }, UPDATE_TIME);
     }
 
     public get pull() {

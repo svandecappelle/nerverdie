@@ -200,9 +200,10 @@ export class HomeComponent implements OnInit {
     const data = [],
       time = (new Date()).getTime();
     let i;
-    for (i = -49; i <= 0; i += 1) {
+    const NB_MINUTES_MONITOR = 10;
+    for (i = -NB_MINUTES_MONITOR * 60; i <= 0; i += 1) {
       data.push({
-        x: time + i * 1000,
+        x: time + ((i + 3) * 1000),
         y: 0
       });
     }
