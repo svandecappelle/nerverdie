@@ -1,7 +1,8 @@
 import { Component, OnInit } from '@angular/core';
 import { DataService } from '../../services/data.service';
+import { detachEmbeddedView } from '@angular/core/src/view';
 
-export interface Tile {
+export class Tile {
   endPoint: string;
   color: string;
   cols: number;
@@ -11,6 +12,9 @@ export interface Tile {
   prefix: string;
   suffix: string;
   formatter: any;
+  request: any;
+
+  constructor() {}
 }
 
 @Component({
@@ -20,9 +24,9 @@ export interface Tile {
 })
 export class HomeComponent implements OnInit {
 
-  private data: any = {};
+  private cpusInitialized = false;
 
-  tiles: Tile[] = [
+  tiles: any[] = [
     {
       text: 'status',
       endPoint: 'metrics',
@@ -84,18 +88,20 @@ export class HomeComponent implements OnInit {
       prefix: undefined,
       suffix: undefined,
       formatter: (data) => {
-        const cpus = [];
-        let cpuNum = 0;
-        data.usage.forEach(element => {
-          cpus.push({
-            name: 'Cpu load ' + cpuNum,
-            data: this.generateEmptyDatas()
+        if (!this.cpusInitialized) {
+          const cpus = [];
+          let cpuNum = 0;
+          data.usage.forEach(element => {
+            cpus.push({
+              name: 'Cpu load ' + cpuNum,
+              data: this.generateEmptyDatas()
+            });
+
+            cpuNum += 1;
+
+            this.initCpus(cpus);
           });
-
-          cpuNum += 1;
-
-          this.initCpus(cpus);
-        });
+        }
         // this.chart = new ChartsOption(cpus, 'CPU load', 'spline');
         // this.chartOptions = this.chart.options;
         return data.info.count + ' cores';
@@ -140,25 +146,26 @@ export class HomeComponent implements OnInit {
       const keys = Object.keys(data);
       // console.log(data);
 
-      let incomingBytes = data[keys[0]].incoming.bytes;
-      let outgoingBytes = data[keys[0]].outgoing.bytes;
+      const incomingBytes = data[keys[0]].incoming.bytes;
+      const outgoingBytes = data[keys[0]].outgoing.bytes;
 
-      if (incomingBytes.includes('M')) {
-        incomingBytes = parseInt(incomingBytes.substring(0, incomingBytes.length - 2));
-        incomingBytes = incomingBytes * 1024;
-      } else if (incomingBytes.includes('K')) {
-        incomingBytes = parseInt(incomingBytes.substring(0, incomingBytes.length - 2));
-      }
+      const dataUnits = ['K', 'M', 'G', 'T'];
 
-      if (outgoingBytes.includes('M')) {
-        outgoingBytes = parseInt(outgoingBytes.substring(0, outgoingBytes.length - 2));
-        outgoingBytes = outgoingBytes * 1024;
-      } else if (outgoingBytes.includes('K')) {
-        outgoingBytes = parseInt(outgoingBytes.substring(0, outgoingBytes.length - 2));
-      }
+      let incomming = incomingBytes;
+      let outgoing = outgoingBytes;
+      dataUnits.forEach(unit => {
+        if (incomingBytes.includes(unit)) {
+          incomming = parseInt(incomingBytes.substring(0, incomingBytes.length - 2));
+          incomming = incomming * Math.pow(1024, dataUnits.indexOf(unit));
+        }
+        if (outgoingBytes.includes(unit)) {
+          outgoing = parseInt(outgoingBytes.substring(0, outgoingBytes.length - 2));
+          outgoing = outgoing * Math.pow(1024, 3);
+        }
+      });
 
-      chart.series[0].addPoint([x, incomingBytes], true, true);
-      chart.series[1].addPoint([x, outgoingBytes], true, true);
+      chart.series[0].addPoint([x, incomming], true, true);
+      chart.series[1].addPoint([x, outgoing], true, true);
     },
     series:
       [{
@@ -176,21 +183,38 @@ export class HomeComponent implements OnInit {
 
   ngOnInit() {
     this.tiles.forEach((tile) => {
+      tile.request = {
+        last: new Date()
+      }
       this.getSimpleIndicator(tile);
     });
+
+    setInterval(() => {
+      this.tiles.forEach((tile) => {
+        tile.request = {
+          last: new Date()
+        }
+        this.getSimpleIndicator(tile);
+      });  
+    }, 3000);
   }
 
   getSimpleIndicator(tile) {
     this.service.get(tile.endPoint).subscribe((data) => {
       if (tile.endPoint.type === 'status') {
-        tile.value = 0;
+        tile.value = true;
       } else if (tile.formatter) {
         tile.value = tile.formatter(data);
       } else {
         tile.value = data;
       }
+
+      tile.request.responseAt = new Date();
+      tile.request.duration = (tile.request.responseAt.getTime()- tile.request.last.getTime()) / 1000;
     }, () => {
-      tile.value = 1;
+      tile.value = "Contact lost";
+      tile.request.responseAt = new Date();
+      tile.request.duration = (tile.request.responseAt.getTime()- tile.request.last.getTime()) / 1000;
     });
   }
 
@@ -222,5 +246,6 @@ export class HomeComponent implements OnInit {
       },
       series: cpus
     };
+    this.cpusInitialized = true;
   }
 }

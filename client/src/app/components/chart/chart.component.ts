@@ -46,6 +46,8 @@ export class ChartComponent implements OnInit {
           this.service.get(this.endPoint).subscribe((data) => {
             this.onPull(data, chart);
             this.pending = false;
+          }, () =>  {
+            this.pending = false;
           });
         }
       });

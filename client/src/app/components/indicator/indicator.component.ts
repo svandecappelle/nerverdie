@@ -16,26 +16,31 @@ export class IndicatorComponent implements OnInit {
   @Input()
   tile: any;
 
+  duration: number;
+
   constructor() { }
 
   ngOnInit() {
   }
 
   formatStatus(status) {
-    if (status) {
-      if (this.tile.color !== 'lightgreen' ) {
+    if (status !== 'Contact lost') {
+      if (this.tile.color !== 'lightgreen') {
         setTimeout(() => {
           this.tile.color = 'lightgreen';
         });
       }
-      return 'OK';
+    } else {
+      if (this.tile.color !== 'crimson') {
+        setTimeout(() => {
+          this.tile.color = 'crimson';
+        });
+      }
     }
-    if (this.tile.color !== 'crimson' ) {
-      setTimeout(() => {
-        this.tile.color = 'crimson';
-      });
+    if (this.type === "status") {
+      return status !== 'Contact lost' ? 'Up' : status;
     }
-    return 'KO';
+    return status;
   }
 
   formatNumber(number) {
@@ -43,5 +48,12 @@ export class IndicatorComponent implements OnInit {
     let suffix = this.tile.suffix ? this.tile.suffix : '';
 
     return `${prefix}${number}${suffix}`;
+  }
+
+  updateDuration() {
+    if (this.tile.request.duration) {
+      this.duration = this.tile.request.duration
+    }
+    return this.duration;
   }
 }

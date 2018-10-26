@@ -1,15 +1,27 @@
-<div *ngIf="type === 'date'">
-  {{value | amCalendar }}
+<div *ngIf="value !== 'Contact lost'" class="ok">
+  <div *ngIf="type === 'date'">
+    {{ value | amCalendar }}
+  </div>
+  <div *ngIf="type === 'duration'">
+    {{ value / 1000 | amDuration: 'seconds' }}
+  </div>
+  <div *ngIf="type === 'status'">
+    {{ formatStatus(value) }}
+  </div>
+  <div *ngIf="type === 'string'">
+    {{ value }}
+  </div>
+  <div *ngIf="type === 'number'">
+    {{ formatNumber(value | number)}}
+  </div>
+
+  <span class="req-time">
+    last request duration {{ updateDuration() }}secs
+  </span>
 </div>
-<div *ngIf="type === 'duration'">
-  {{ value / 1000 | amDuration: 'seconds' }}
-</div>
-<div *ngIf="type === 'status'" [class.ok]="formatStatus(value) === 'OK'" [class.ko]="formatStatus(value) === 'KO'">
-  {{ formatStatus(value) }}
-</div>
-<div *ngIf="type === 'string'">
-  {{value}}
-</div>
-<div *ngIf="type === 'number'">
-  {{ formatNumber(value | number) }}
+
+<div *ngIf="value === 'Contact lost'" class="ko">
+  <div>
+    {{ formatStatus(value) }}
+  </div>
 </div>

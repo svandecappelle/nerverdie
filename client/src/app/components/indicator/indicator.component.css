@@ -1,7 +1,16 @@
 .ok {
-    background-color: lightgreen;
+    color: black;
 }
 
 .ko {
     color: white;
+}
+
+.req-time {
+    position: absolute;
+    text-align: right;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    font-size: 0.6em;
 }
