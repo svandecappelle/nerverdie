@@ -19,7 +19,6 @@ APP.config['SECRET_KEY'] = 'the quick brown fox jumps over the lazy dog'
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
-        print(session)
         if not session or not session['logged_in']:
             return redirect('/login')
         return f(*args, **kwargs)
