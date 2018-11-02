@@ -5,6 +5,7 @@ import os
 
 from flask import Flask, session, redirect
 from server.daemon import Daemon
+from server.storage.main import Datastore
 
 from functools import wraps
 
@@ -63,6 +64,7 @@ def flaskrun(app, default_host="127.0.0.1",
         app.wsgi_app = ProfilerMiddleware(app.wsgi_app,
                        restrictions=[30])
         options.debug = True
+    storage = Datastore()
     daemon = Daemon()
     daemon.start()
 

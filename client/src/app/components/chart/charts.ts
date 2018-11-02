@@ -22,6 +22,7 @@ export class ChartsOption {
                 useUTC: false
             },
             area: {
+                stacking: 'normal',
                 marker: {
                     enabled: false
                 }

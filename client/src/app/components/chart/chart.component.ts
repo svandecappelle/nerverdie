@@ -47,6 +47,11 @@ export class ChartComponent implements OnInit {
             this.onPull(data, chart);
             this.pending = false;
           }, () =>  {
+            const x = (new Date()).getTime();
+            chart.series.forEach(serie => {
+              serie.addPoint([x, null], true, true);
+            });
+
             this.pending = false;
           });
         }

@@ -56,11 +56,13 @@ export class HomeComponent implements OnInit {
       rows: 1,
       color:
         'lightblue',
-      type: 'number',
+      type: 'string',
       prefix: undefined,
       suffix: 'Mo',
       formatter: (data) => {
-        return Math.round(data.virtual[0] / 1024 / 1024);
+        let used: number = data['virtual'][3] / 1024 / 1024;
+        let total: number = data['virtual'][0] / 1024 / 1024;
+        return `${Math.round(used)}Mo / ${Math.round(total)}Mo`; // Math.round(data.virtual[3] / 1024 / 1024);
       }
     },
     {
@@ -73,7 +75,7 @@ export class HomeComponent implements OnInit {
       prefix: undefined,
       suffix: undefined,
       formatter: (data) => {
-        let used: number = data['usage'][2] / 1024 / 1024;
+        let used: number = data['usage'][1] / 1024 / 1024;
         let total: number = data['usage'][0] / 1024 / 1024;
         return `${Math.round(used)}Mo / ${Math.round(total)}Mo`;
       }
@@ -94,7 +96,7 @@ export class HomeComponent implements OnInit {
           data.usage.forEach(element => {
             cpus.push({
               name: 'Cpu load ' + cpuNum,
-              data: this.generateEmptyDatas()
+              data: []
             });
 
             cpuNum += 1;
@@ -235,17 +237,35 @@ export class HomeComponent implements OnInit {
   }
 
   initCpus(cpus: Array<any>) {
-    this.cpu = {
-      onPull: (data, chart) => {
-        const x = (new Date()).getTime();
+
+    this.service.get('history/cpu/load').subscribe((data) => {
+      
+      data.forEach(metricHistoryEntry => {
         let i = 0;
-        data.usage.forEach(element => {
-          chart.series[i].addPoint([x, data.usage[i]], true, true);
-          i += 1;
+        cpus.forEach(cpusEntry => {
+          cpus[i].data.push({
+            x: new Date(metricHistoryEntry.date),
+            y: metricHistoryEntry[`cpu${i}`]
+          });
+          i +=1;
         });
-      },
-      series: cpus
-    };
+      });
+      console.log(cpus);
+
+      this.cpu = {
+        onPull: (data, chart) => {
+          const x = (new Date()).getTime();
+          let i = 0;
+          data.usage.forEach(element => {
+            chart.series[i].addPoint([x, data.usage[i]], true, true);
+            i += 1;
+          });
+        },
+        series: cpus
+      };
+    });
+
+    
     this.cpusInitialized = true;
   }
 }

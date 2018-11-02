@@ -1,53 +1,28 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-import plyvel
+#import plyvel
 
-DB_LOCATION = 'nerverdie.db/'
+#DB_LOCATION = 'nerverdie.db/'
 
+#db = plyvel.DB(DB_LOCATION, create_if_missing=True)
 
-class Datastore:
-    class __Datastore:
-
-        def __init__(self, args={}):
-            self.args = args
-            self.db = plyvel.DB(DB_LOCATION, create_if_missing=True)
-
-        def __str__(self):
-            return repr(self) + self.args
-
-        def get(self, name):
-            return self.db.get(name);
+from peewee import *
+from server.models.metrics import Cpu, CpuCore
+from server.models.user import User
 
 
-        def put(self, name, value):
-            return self.db.put(name, value);
 
-        def delete(self, name):
-            return self.db.delete(name);
+db = SqliteDatabase('app.db', pragmas={
+    'journal_mode': 'wal',
+    'cache_size': -32 * 1000})
 
-        def iterator(self, start, stop = None):
-            return self.db.iterator(start=start.encode(), fill_cache=False)
 
-    instance = None
+class Datastore():
 
     def __init__(self, args={}):
-        if not Datastore.instance:
-            Datastore.instance = Datastore.__Datastore(args)
-        else:
-            Datastore.instance.args = args
-    def __getattr__(self, name):
-        return getattr(self.instance.args, name)
+        db.connect()
+        db.create_tables([Cpu, CpuCore, User])
 
-
-    def get(self, name):
-        return self.instance.get(name)
-
-    def put(self, name, value):
-        return self.instance.put(name, value)
-
-    def delete(self, name):
-        return self.instance.delete(name)
-
-    def iterator(self, start, stop = None):
-        return self.instance.iterator(start, stop)
+    def close(self):
+        db.close()

@@ -23,13 +23,14 @@ export class IndicatorComponent implements OnInit {
   ngOnInit() {
   }
 
-  formatStatus(status) {
+  colorizeAndFormat(status) {
     if (status !== 'Contact lost') {
       if (this.tile.color !== 'lightgreen') {
         setTimeout(() => {
           this.tile.color = 'lightgreen';
         });
       }
+      // console.log(this.tile.text, status);
     } else {
       if (this.tile.color !== 'crimson') {
         setTimeout(() => {
@@ -39,7 +40,10 @@ export class IndicatorComponent implements OnInit {
     }
     if (this.type === "status") {
       return status !== 'Contact lost' ? 'Up' : status;
+    } else if (this.type === 'number') {
+      status = this.formatNumber(status);
     }
+
     return status;
   }
 

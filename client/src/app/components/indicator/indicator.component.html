@@ -1,18 +1,21 @@
+<div class="title">
+  {{tile.text}}
+</div>
 <div *ngIf="value !== 'Contact lost'" class="ok">
   <div *ngIf="type === 'date'">
-    {{ value | amCalendar }}
+    {{ colorizeAndFormat(value) | amCalendar }}
   </div>
   <div *ngIf="type === 'duration'">
-    {{ value / 1000 | amDuration: 'seconds' }}
+    {{ colorizeAndFormat(value / 1000 | amDuration: 'seconds') }}
   </div>
   <div *ngIf="type === 'status'">
-    {{ formatStatus(value) }}
+    {{ colorizeAndFormat(value) }}
   </div>
   <div *ngIf="type === 'string'">
-    {{ value }}
+    {{ colorizeAndFormat(value) }}
   </div>
   <div *ngIf="type === 'number'">
-    {{ formatNumber(value | number)}}
+    {{ colorizeAndFormat(value) | number}}
   </div>
 
   <span class="req-time">
@@ -22,6 +25,6 @@
 
 <div *ngIf="value === 'Contact lost'" class="ko">
   <div>
-    {{ formatStatus(value) }}
+    {{ colorizeAndFormat(value) }}
   </div>
 </div>
