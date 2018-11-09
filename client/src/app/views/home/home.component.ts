@@ -237,35 +237,34 @@ export class HomeComponent implements OnInit {
   }
 
   initCpus(cpus: Array<any>) {
-
-    this.service.get('history/cpu/load').subscribe((data) => {
-      
-      data.forEach(metricHistoryEntry => {
-        let i = 0;
-        cpus.forEach(cpusEntry => {
-          cpus[i].data.push({
-            x: new Date(metricHistoryEntry.date),
-            y: metricHistoryEntry[`cpu${i}`]
-          });
-          i +=1;
-        });
-      });
-      console.log(cpus);
-
-      this.cpu = {
-        onPull: (data, chart) => {
-          const x = (new Date()).getTime();
+    if (!this.cpusInitialized){
+      this.service.get('history/cpu/load').subscribe((data) => {
+        data.forEach(metricHistoryEntry => {
           let i = 0;
-          data.usage.forEach(element => {
-            chart.series[i].addPoint([x, data.usage[i]], true, true);
-            i += 1;
+          cpus.forEach(cpusEntry => {
+            cpus[i].data.push({
+              x: new Date(metricHistoryEntry.date),
+              y: metricHistoryEntry[`cpu${i}`] ? metricHistoryEntry[`cpu${i}`] : null
+            });
+            i +=1;
           });
-        },
-        series: cpus
-      };
-    });
+        });
 
-    
-    this.cpusInitialized = true;
+        this.cpu = {
+          onPull: (data, chart) => {
+            const x = (new Date()).getTime();
+            let i = 0;
+            data.usage.forEach(element => {
+              chart.series[i].addPoint([x, data.usage[i]], true, true);
+              i += 1;
+            });
+          },
+          series: cpus
+        };
+
+        this.cpusInitialized = true;
+      });
+
+    }
   }
 }

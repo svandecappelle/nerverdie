@@ -24,7 +24,7 @@ export class ChartComponent implements OnInit {
   title: string;
 
   @Input()
-  type = 'area';
+  type = 'areaspline';
 
   @Input()
   endPoint: string;

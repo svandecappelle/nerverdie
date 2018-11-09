@@ -15,7 +15,7 @@ class LoggerConfigurator:
         # création de l'objet logger qui va nous servir à écrire dans les logs
         logger = logging.getLogger()
         # on met le niveau du logger à DEBUG, comme ça il écrit tout
-        logger.setLevel(logging.DEBUG)
+        logger.setLevel(logging.INFO)
 
         # création d'un formateur qui va ajouter le temps, le niveau
         # de chaque message quand on écrira un message dans le log
