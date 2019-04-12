@@ -1,3 +1,9 @@
+import logging
+import math
+from scapy.all import *
+import socket
+import errno
+
 
 class NetworkDiscoverer():
     # Layer 2 network neighbourhood discovery tool
@@ -7,12 +13,10 @@ class NetworkDiscoverer():
         logging.basicConfig(format='%(asctime)s %(levelname)-5s %(message)s', datefmt='%Y-%m-%d %H:%M:%S', level=logging.DEBUG)
         self.logger = logging.getLogger(__name__)
 
-
     def long2net(self, arg):
         if (arg <= 0 or arg >= 0xFFFFFFFF):
             raise ValueError("illegal netmask value", hex(arg))
         return 32 - int(round(math.log(0xFFFFFFFF - arg, 2)))
-
 
     def to_CIDR_notation(self, bytes_network, bytes_netmask):
         network = scapy.utils.ltoa(bytes_network)
@@ -23,7 +27,6 @@ class NetworkDiscoverer():
             return None
 
         return net
-
 
     def discover(self, net, interface, timeout=1):
         self.logger.info("arping %s on %s" % (net, interface))

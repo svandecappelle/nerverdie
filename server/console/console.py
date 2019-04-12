@@ -1,5 +1,4 @@
 """Console call menu"""
-#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 import curses
 import os
@@ -8,6 +7,7 @@ import traceback
 from server.console.watching import watch
 
 MONIT = watch.Printer()
+
 
 class CursedMenu(object):
     """A class which abstracts the horrors of building a curses-based menu system"""
@@ -21,14 +21,13 @@ class CursedMenu(object):
         self.screen = curses.initscr()
         curses.noecho()
         curses.cbreak()
-        #curses.start_color()
+        # curses.start_color()
         self.screen.keypad(1)
 
         # Highlighted and Normal line definitions
-        #curses.init_pair(1, curses.COLOR_BLACK, curses.COLOR_WHITE)
-        #self.highlighted = curses.color_pair(1)
-        #self.normal = curses.A_NORMAL
-
+        # curses.init_pair(1, curses.COLOR_BLACK, curses.COLOR_WHITE)
+        # self.highlighted = curses.color_pair(1)
+        # self.normal = curses.A_NORMAL
 
     def show(self, options, title="Title", subtitle="Subtitle"):
         """Draws a menu with the given parameters"""
@@ -37,7 +36,6 @@ class CursedMenu(object):
         self.subtitle = subtitle
         self.selected = 0
         self.draw_menu()
-
 
     def set_options(self, options):
         """Validates that the last option is 'Exit'"""
@@ -49,7 +47,6 @@ class CursedMenu(object):
                 }
             })
         self.options = options
-
 
     def draw_menu(self):
         """Actually draws the menu and handles branching"""
@@ -65,32 +62,35 @@ class CursedMenu(object):
             self.__exit__()
             traceback.print_exc()
 
-
     def draw(self):
         """Draw the menu and lines"""
         self.screen.border(0)
-        self.screen.addstr(2, 2, self.title, curses.A_STANDOUT) # Title for this menu
-        self.screen.addstr(4, 2, self.subtitle, curses.A_BOLD) #Subtitle for this menu
+        self.screen.addstr(2, 2, self.title, curses.A_STANDOUT)
+        self.screen.addstr(4, 2, self.subtitle, curses.A_BOLD)
 
         # Display all the menu items, showing the 'pos' item highlighted
         for index in range(len(self.options)):
             textstyle = curses.A_NORMAL
             if index == self.selected:
                 textstyle = curses.A_REVERSE
-            self.screen.addstr(5 + index, 4, "%d - %s" % (index + 1, self.options.get(index).get('text')) , textstyle)
+            self.screen.addstr(
+                5 + index,
+                4,
+                "%d - %s" % (index + 1, self.options.get(index).get('text')),
+                textstyle
+            )
 
         self.screen.refresh()
 
-
     def get_user_input(self):
         """Gets the user's input and acts appropriately"""
-        user_in = self.screen.getch() # Gets user input
+        user_in = self.screen.getch()  # Gets user input
 
         # Enter and Exit Keys are special cases
         if user_in == 10:
             return {
                 'id': self.selected,
-                'text' : self.options.get(self.selected).get('text')
+                'text': self.options.get(self.selected).get('text')
             }
         if user_in == 27:
             return {
@@ -99,9 +99,9 @@ class CursedMenu(object):
             }
 
         # Increment or Decrement
-        if user_in == curses.KEY_DOWN: # down arrow
+        if user_in == curses.KEY_DOWN:
             self.selected += 1
-        if user_in == curses.KEY_UP: # up arrow
+        if user_in == curses.KEY_UP:
             self.selected -= 1
         self.selected = self.selected % len(self.options)
 
@@ -110,17 +110,16 @@ class CursedMenu(object):
 
         return
 
-
     def handle_request(self, request):
         """This is where you do things with the request"""
         if request is None:
             return
         self.options.get(request.get('id')).get('call')()
 
-
     def __exit__(self):
         curses.endwin()
         os.system('clear')
+
 
 def main():
     """Console main function"""
@@ -143,6 +142,7 @@ def main():
             'call': MONIT.monit_network
         }
     }, title='Main menu', subtitle='select what to monitor')
+
 
 if __name__ == '__main__':
     main()

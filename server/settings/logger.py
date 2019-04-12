@@ -34,6 +34,6 @@ class LoggerConfigurator:
 
         # création d'un second handler qui va rediriger chaque écriture de log
         # sur la console
-        #steam_handler = logging.StreamHandler()
-        #steam_handler.setLevel(logging.DEBUG)
-#logger.addHandler(steam_handler)
+        # steam_handler = logging.StreamHandler()
+        # steam_handler.setLevel(logging.DEBUG)
+        # logger.addHandler(steam_handler)

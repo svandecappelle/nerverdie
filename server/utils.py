@@ -1,6 +1,6 @@
 """Module utility provides the utilities function"""
-#!/usr/bin/env python
 # -*- coding: utf-8 -*-
+
 
 def bytes2human(value_to_format, precise=False):
     """

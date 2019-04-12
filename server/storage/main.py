@@ -1,16 +1,9 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-#import plyvel
-
-#DB_LOCATION = 'nerverdie.db/'
-
-#db = plyvel.DB(DB_LOCATION, create_if_missing=True)
-
-from peewee import *
+from peewee import SqliteDatabase
 from server.models.metrics import Cpu, CpuCore
 from server.models.user import User
-
 
 
 db = SqliteDatabase('app.db', pragmas={

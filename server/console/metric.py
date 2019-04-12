@@ -1,5 +1,4 @@
 """Module metrics provides the metrics single functions to access system state"""
-#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
 from enum import Enum
@@ -9,7 +8,6 @@ import os
 import platform
 import socket
 import sys
-import uuid
 import subprocess
 import re
 
@@ -30,19 +28,20 @@ duplex_map = {
     psutil.NIC_DUPLEX_UNKNOWN: "?",
 }
 
+
 def get_processor_name():
     if platform.system() == "Windows":
         return platform.processor()
     elif platform.system() == "Darwin":
         os.environ['PATH'] = os.environ['PATH'] + os.pathsep + '/usr/sbin'
-        command ="sysctl -n machdep.cpu.brand_string"
+        command = "sysctl -n machdep.cpu.brand_string"
         return subprocess.check_output(command).strip()
     elif platform.system() == "Linux":
         command = "cat /proc/cpuinfo"
         all_info = subprocess.check_output(command, shell=True).strip()
         for line in iter(all_info.splitlines()):
             if "model name" in str(line):
-                return re.sub( ".*model name.*:", "", str(line),1)
+                return re.sub(".*model name.*:", "", str(line), 1)
     return ""
 
 
@@ -52,6 +51,7 @@ class Format(Enum):
     DOUBLE = 1
     PERCENT = 2
 
+
 class Metric(object):
     """All metrics are accessible to call here"""
 
@@ -59,7 +59,7 @@ class Metric(object):
         """Entry of all cpu's units"""
         if opts is None:
             opts = {}
-        if 'format' not in opts: 
+        if 'format' not in opts:
             opts.update({
                 "format": Format.PERCENT
             })
@@ -72,7 +72,7 @@ class Metric(object):
             usage = psutil.cpu_percent(percpu=True)
         else:
             usage = psutil.cpu_times(percpu=True)
-        
+
         if opts.get('mode') == 'simple':
             info = get_processor_name()
         else:
@@ -86,7 +86,7 @@ class Metric(object):
     def cpu_load(self, opts=None):
         if opts is None:
             opts = {}
-        if 'format' not in opts: 
+        if 'format' not in opts:
             opts.update({
                 "format": Format.PERCENT
             })
@@ -99,13 +99,13 @@ class Metric(object):
             usage = psutil.cpu_percent(percpu=True)
         else:
             usage = psutil.cpu_times(percpu=True)
-        
+
         i = 0
         output = {
             'date': time.strftime('%Y-%m-%d %H:%M:%S')
         }
         for cpu_usage in usage:
-            output['cpu%d' % i] =  cpu_usage
+            output['cpu%d' % i] = cpu_usage
             i += 1
 
         return [output]
@@ -117,7 +117,7 @@ class Metric(object):
             'virtual': psutil.virtual_memory(),
             'swap': psutil.swap_memory()
         }
-    
+
     def memory_loads(self, opts=None):
         """Get system memory usage"""
         return [{
@@ -198,10 +198,10 @@ class Metric(object):
                 })
             addresses = {}
             for addr in addrs:
-                #print("    %-4s" % af_map.get(addr.family, addr.family))
-                #print(" address   : %s" % addr.address)
+                # print("    %-4s" % af_map.get(addr.family, addr.family))
+                # print(" address   : %s" % addr.address)
                 current = {
-                    'name' : "%-4s" % af_map.get(addr.family, addr.family),
+                    'name': "%-4s" % af_map.get(addr.family, addr.family),
                     'address': addr.address
                 }
                 if addr.broadcast:
@@ -223,6 +223,6 @@ class Metric(object):
                 network_interface.update({
                     'addr': addresses
                 })
-            
+
             output.update({nic: network_interface})
         return output

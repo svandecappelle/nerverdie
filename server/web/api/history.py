@@ -9,6 +9,7 @@ from flask import jsonify
 
 HISTORY_DEFAULT_RETURN = int(200 / 3)
 
+
 @app.route('/api/history/cpu/load')
 @login_required
 def cpu_load_history():

@@ -1,8 +1,7 @@
 """Watching information until <ESC> is pressed"""
-#!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from __future__ import unicode_literals # convenient for Python 2
+from __future__ import unicode_literals  # convenient for Python 2
 
 # Python 3 compliance
 try:
@@ -10,22 +9,14 @@ try:
 except ImportError:
     import _thread as thread
 
-import os
 import time
 import curses
 import atexit
-
-import sys
-import termios
-import fcntl
-
 
 from server.console.watching.formatters import sysinfo
 from server.console.watching.formatters import memory
 from server.console.watching.formatters import network
 from server.console.watching.formatters import cpu
-
-
 
 MAX_FPS = 1
 time_per_frame = 1. / MAX_FPS
@@ -45,10 +36,13 @@ screen."""
 
 class _GetchUnix:
     def __init__(self):
-        import tty, sys
+        import tty
+        import sys
 
     def __call__(self):
-        import sys, tty, termios
+        import sys
+        import tty
+        import termios
         fd = sys.stdin.fileno()
         old_settings = termios.tcgetattr(fd)
         try:
@@ -67,7 +61,9 @@ class _GetchWindows:
         import msvcrt
         return msvcrt.getch()
 
+
 getch = _Getch()
+
 
 class FrameWatcher(object):
     def __init__(self):
@@ -85,7 +81,7 @@ class FrameWatcher(object):
 
 
 class CursesPrinter(object):
-    
+
     def __init__(self, watcher):
         self.win = curses.initscr()
         self.stdscr = curses.initscr()
@@ -106,15 +102,15 @@ class CursesPrinter(object):
         time.sleep(interval)
 
     def watch(self, interval=1):
-        
+
         def loop(a_list):
             time.sleep(1)
-            char = getch() 
+            char = getch()
             a_list.append(True)
-            #print("'%s'" % char)
-            #while not getch() != '':
+            # print("'%s'" % char)
+            # while not getch() != '':
             #    a_list.append(True)
-        
+
         cur_interval = 0
         a_list = []
         thread.start_new_thread(loop, (a_list,))
@@ -131,24 +127,25 @@ class CursesPrinter(object):
 
     def refresh_window(self):
         """Print results on screen by using curses."""
-        #curses.endwin()
+        # curses.endwin()
         self.win.erase()
         self.stdscr.border(0)
         self.formatter.display()
         self.win.refresh()
 
+
 class Printer(object):
 
     def show(self, formatter, interval=1):
         """Print on screen"""
-        #os.system('clear')
+        # os.system('clear')
         printer = CursesPrinter(formatter)
         printer.watch(interval)
 
     def sys_info(self):
         """View System infos"""
         self.show(sysinfo.Formatter)
-        
+
     def monit_cpu(self):
         """Monitor cpu"""
         self.show(cpu.Formatter, interval=1)
