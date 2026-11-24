@@ -4,7 +4,8 @@
 import os
 import optparse
 
-from flask import Flask, session, jsonify
+from flask import Flask, session, jsonify, request
+from werkzeug.exceptions import HTTPException
 
 from functools import wraps
 
@@ -16,6 +17,14 @@ APP = Flask(__name__, template_folder=tmpl_dir)
 configure_app(APP)
 
 
+@APP.errorhandler(HTTPException)
+def api_http_error(error):
+    """Return JSON errors for the API instead of HTML pages."""
+    if request.path.startswith('/api/'):
+        return jsonify({'error': error.name}), error.code
+    return error
+
+
 def login_required(f):
     @wraps(f)
     def decorated_function(*args, **kwargs):
@@ -25,27 +34,34 @@ def login_required(f):
     return decorated_function
 
 
-def flaskrun(app, default_host="127.0.0.1", default_port="5000"):
+def flaskrun(app, default_host="127.0.0.1", default_port="5000", default_threads="8"):
     """
-    Takes a flask.Flask instance and runs it. Parses
-    command-line flags to configure the app.
+    Takes a flask.Flask instance and serves it with the waitress WSGI
+    server. Parses command-line flags to configure it.
 
-    The interactive debugger is deliberately not exposed: it allows
-    arbitrary code execution for anyone who can reach the server.
+    Flask's development server and its interactive debugger are
+    deliberately not used: the debugger allows arbitrary code execution
+    for anyone who can reach the server.
     """
+    from waitress import serve
+
     from server.daemon import Daemon
     from server.storage.main import Datastore
 
     # Set up the command-line options
     parser = optparse.OptionParser()
     parser.add_option("-H", "--host",
-                      help="Hostname of the Flask app " +
+                      help="Interface to listen on " +
                            "[default %s]" % default_host,
                       default=default_host)
     parser.add_option("-P", "--port",
-                      help="Port for the Flask app " +
+                      help="Port to listen on " +
                            "[default %s]" % default_port,
                       default=default_port)
+    parser.add_option("-t", "--threads",
+                      help="Number of request threads " +
+                           "[default %s]" % default_threads,
+                      default=default_threads)
 
     options, _ = parser.parse_args()
 
@@ -53,8 +69,10 @@ def flaskrun(app, default_host="127.0.0.1", default_port="5000"):
     daemon = Daemon()
     daemon.start()
 
-    app.run(
-        debug=False,
+    serve(
+        app,
         host=options.host,
-        port=int(options.port)
+        port=int(options.port),
+        threads=int(options.threads),
+        ident='neverdie',
     )

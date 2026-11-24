@@ -63,5 +63,8 @@ class Daemon():
 
     def start(self):
         """Daemon start method"""
-        daemon_processus = Process(target=self.loop)
+        # daemon=True: the collector stops with the server instead of
+        # surviving it (or blocking its exit, as the loop never ends).
+        daemon_processus = Process(target=self.loop, daemon=True)
         daemon_processus.start()
+        return daemon_processus

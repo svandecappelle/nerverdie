@@ -53,16 +53,75 @@ def load_secret_key():
     return key
 
 
+# The Angular client only loads its own files. Inline styles are required
+# by Angular Material component styles and Highcharts.
+CONTENT_SECURITY_POLICY = '; '.join([
+    "default-src 'self'",
+    "script-src 'self'",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data:",
+    "font-src 'self' data:",
+    "connect-src 'self'",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+])
+
+SECURITY_HEADERS = {
+    'Content-Security-Policy': CONTENT_SECURITY_POLICY,
+    'X-Content-Type-Options': 'nosniff',
+    'X-Frame-Options': 'DENY',
+    'Referrer-Policy': 'no-referrer',
+    'Permissions-Policy': 'camera=(), microphone=(), geolocation=()',
+    'Cross-Origin-Opener-Policy': 'same-origin',
+}
+
+
+def https_enabled():
+    """True when the app is served over HTTPS (behind a TLS reverse proxy)."""
+    return _env_flag('NEVERDIE_COOKIE_SECURE', False)
+
+
+def trusted_proxy_count():
+    """Number of reverse proxies in front of the app (NEVERDIE_TRUSTED_PROXIES)."""
+    try:
+        return max(0, int(os.environ.get('NEVERDIE_TRUSTED_PROXIES', '0')))
+    except ValueError:
+        LOGGER.error("NEVERDIE_TRUSTED_PROXIES must be an integer, ignoring it")
+        return 0
+
+
 def configure_app(app):
-    """Apply secret key and hardened session cookie settings to a Flask app."""
+    """Apply secret key, session cookie, header and proxy settings to a Flask app."""
     app.config.update(
         SECRET_KEY=load_secret_key(),
         SESSION_COOKIE_HTTPONLY=True,
         SESSION_COOKIE_SAMESITE='Lax',
         # Enable once the app is served over HTTPS (recommended).
-        SESSION_COOKIE_SECURE=_env_flag('NEVERDIE_COOKIE_SECURE', False),
+        SESSION_COOKIE_SECURE=https_enabled(),
         PERMANENT_SESSION_LIFETIME=timedelta(seconds=SESSION_DURATION_SECONDS),
+        # The API only receives small JSON bodies.
+        MAX_CONTENT_LENGTH=64 * 1024,
     )
+
+    proxies = trusted_proxy_count()
+    if proxies:
+        # Trust X-Forwarded-For/Proto from that many proxies only, so that
+        # request.remote_addr (used by the login throttle) is the real client.
+        from werkzeug.middleware.proxy_fix import ProxyFix
+        app.wsgi_app = ProxyFix(app.wsgi_app, x_for=proxies, x_proto=proxies, x_host=proxies)
+
+    @app.after_request
+    def add_security_headers(response):
+        for name, value in SECURITY_HEADERS.items():
+            response.headers.setdefault(name, value)
+        if https_enabled():
+            response.headers.setdefault('Strict-Transport-Security', 'max-age=31536000; includeSubDomains')
+        if response.mimetype == 'application/json':
+            # API responses contain system information: never cache them.
+            response.headers.setdefault('Cache-Control', 'no-store')
+        return response
 
 
 class LoginThrottle(object):

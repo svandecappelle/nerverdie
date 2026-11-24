@@ -3,7 +3,7 @@
 
 import os
 
-from flask import send_from_directory
+from flask import abort, send_from_directory
 from werkzeug.security import safe_join
 
 from server.application import APP as app
@@ -18,6 +18,9 @@ def serve_dir_directory_index():
 
 @app.route('/<path:path>', methods=['GET'])
 def serve_application(path):
+    # Unknown API URLs are errors, not client-side routes.
+    if path == 'api' or path.startswith('api/'):
+        abort(404)
     # safe_join returns None for paths escaping static_file_dir, so the
     # existence check cannot be used to probe files elsewhere on disk.
     full_path = safe_join(static_file_dir, path)

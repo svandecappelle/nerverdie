@@ -12,7 +12,7 @@ uv sync
 ```
 
 * Run app:
-  * In web service: ```uv run python start.py``` (options: `-H <host>`, `-P <port>`)
+  * In web service: ```uv run python start.py``` (options: `-H <host>`, `-P <port>`, `-t <threads>`), served by the waitress WSGI server
   * In console management: ```uv run python console.py```
   * Network discovery agent: ```uv run python agent.py -n 192.168.10.0/24``` (only on networks you are responsible for)
 * Run the checks:
@@ -31,5 +31,29 @@ Environment variables:
 * `NEVERDIE_SECRET_KEY`: session signing key. If unset, a random key is generated once in `instance/secret_key` (git-ignored).
 * `NEVERDIE_COOKIE_SECURE=1`: send the session cookie over HTTPS only. Set it as soon as the app is served behind TLS.
 * `NEVERDIE_DB`: SQLite database path (default `db.sqlite`).
+* `NEVERDIE_TRUSTED_PROXIES`: number of reverse proxies in front of the app (default `0`). Set it to `1` behind a single proxy so that the client address and scheme are read from `X-Forwarded-For` / `X-Forwarded-Proto`. Leave it at `0` when clients connect directly, otherwise they could spoof their address.
 
 After 5 failed logins from one address within 5 minutes, further attempts are refused (HTTP 429).
+
+Every response carries security headers (Content-Security-Policy, X-Frame-Options, X-Content-Type-Options, Referrer-Policy), plus Strict-Transport-Security when `NEVERDIE_COOKIE_SECURE=1`. API responses are never cached.
+
+## Production deployment
+Keep the app listening on `127.0.0.1` (the default) and put a TLS reverse proxy in front of it. Example with [Caddy](https://caddyserver.com/), which obtains the certificate automatically:
+```
+monitor.example.com {
+    reverse_proxy 127.0.0.1:5000
+}
+```
+Equivalent nginx location (inside a `server` block configured for TLS):
+```
+location / {
+    proxy_pass http://127.0.0.1:5000;
+    proxy_set_header Host $host;
+    proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+}
+```
+Then start the app with:
+```
+NEVERDIE_COOKIE_SECURE=1 NEVERDIE_TRUSTED_PROXIES=1 uv run python start.py
+```
