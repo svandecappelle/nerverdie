@@ -20,6 +20,14 @@ uv sync
   * Lint: ```uv run ruff check .```
   * Known vulnerabilities in dependencies: ```uv run pip-audit```
 
+### Continuous integration
+GitHub Actions (`.github/workflows/ci.yml`) runs on every push to `master`, on pull requests and weekly:
+* ruff, pip-audit, and the tests with deprecation warnings treated as errors (Python 3.12);
+* the tests on Linux and Windows with Python 3.10 and 3.14.
+
+`uv sync --locked` fails when `uv.lock` is out of date with `pyproject.toml`: run `uv lock` and commit it.
+Dependabot (`.github/dependabot.yml`) opens weekly update pull requests for the Python dependencies and the actions.
+
 ## Users and security
 There are no default credentials. Create an account before logging in:
 ```
