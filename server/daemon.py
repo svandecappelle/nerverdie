@@ -31,7 +31,6 @@ class Daemon():
     def check(self):
         """Check todays datas"""
         today = date.today()
-        today_formatted = 'cpu_%s-' % today.isoformat()
 
         print('storage datas:')
         for cpu in CpuCore.select():

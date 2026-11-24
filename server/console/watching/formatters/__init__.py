@@ -41,7 +41,7 @@ class FormatterPrinter(object):
             self.lineno = START_CURSOR
             self.window.refresh()
             raise
-    
+
     def print_inline(self, line, highlight=False, style=None):
         """A thin wrapper around curses's addstr()."""
         if self.lineno == -1:
@@ -87,4 +87,3 @@ class FormatterPrinter(object):
         self.print_inline("%s] %s%%" % (blanks, perc))
         if carriage:
             self.cursor_x = START_CURSOR
-        

@@ -1,6 +1,6 @@
 from peewee import (
+    AutoField,
     DateTimeField,
-    PrimaryKeyField,
     ForeignKeyField,
     CharField,
     DecimalField
@@ -14,7 +14,7 @@ class Metric(BaseModel):
 
 
 class Cpu(Metric):
-    id = PrimaryKeyField()
+    id = AutoField()
 
 
 class CpuCore(BaseModel):

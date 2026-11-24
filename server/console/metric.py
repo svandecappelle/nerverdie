@@ -4,7 +4,6 @@
 from enum import Enum
 
 import time
-import os
 import platform
 import socket
 import sys
@@ -33,16 +32,28 @@ def get_processor_name():
     if platform.system() == "Windows":
         return platform.processor()
     elif platform.system() == "Darwin":
-        os.environ['PATH'] = os.environ['PATH'] + os.pathsep + '/usr/sbin'
-        command = "sysctl -n machdep.cpu.brand_string"
-        return subprocess.check_output(command).strip()
+        output = subprocess.check_output(  # noqa: S603 (fixed command)
+            ["/usr/sbin/sysctl", "-n", "machdep.cpu.brand_string"],
+            universal_newlines=True)
+        return output.strip()
     elif platform.system() == "Linux":
-        command = "cat /proc/cpuinfo"
-        all_info = subprocess.check_output(command, shell=True).strip()
-        for line in iter(all_info.splitlines()):
-            if "model name" in str(line):
-                return re.sub(".*model name.*:", "", str(line), 1)
+        with open("/proc/cpuinfo") as cpuinfo_file:
+            for line in cpuinfo_file:
+                if "model name" in line:
+                    return re.sub(".*model name.*:", "", line, count=1).strip()
     return ""
+
+
+def get_distribution():
+    """Return (name, version, id) of the OS distribution when available.
+
+    Replaces platform.linux_distribution(), removed in Python 3.8.
+    """
+    try:
+        release = platform.freedesktop_os_release()
+    except OSError:
+        return ("", "", "")
+    return (release.get("NAME", ""), release.get("VERSION_ID", ""), release.get("ID", ""))
 
 
 class Format(Enum):
@@ -140,6 +151,9 @@ class Metric(object):
 
     def sensors(self, opts=None):
         """Get sensors details"""
+        # Not provided by psutil on Windows and macOS.
+        if not hasattr(psutil, 'sensors_temperatures'):
+            return {}
         return psutil.sensors_temperatures()
 
     def system_info(self, opts=None):
@@ -148,7 +162,7 @@ class Metric(object):
             'hostname': socket.gethostname(),
             'fqdn': socket.getfqdn(),
             'platform': {
-                'distribution': platform.linux_distribution(),
+                'distribution': get_distribution(),
                 'sys': sys.platform,
                 'platform': platform.platform()
             },

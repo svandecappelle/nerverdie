@@ -21,12 +21,12 @@ class Formatter(FormatterPrinter):
         for interface in value:
             self.print_line("%s: " % interface, True)
             properties = value.get(interface)
-            
+
             incoming = properties.get('incoming')
             outgoing = properties.get('outgoing')
             stats = properties.get('stats')
             addresses = properties.get('addr')
-            
+
             self.print_line("\tincoming:")
             self.print_line("\t\tbytes: %s, drops: %s, errs: %s, pkts: %s" % (incoming.get('bytes'), incoming.get('drops'), incoming.get('errs'), incoming.get('pkts')))
 

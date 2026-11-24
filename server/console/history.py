@@ -1,10 +1,8 @@
 # -*- coding: utf-8 -*-
 
-from datetime import date, datetime, timedelta
+from datetime import datetime, timedelta
 
 from server.models.metrics import Cpu, CpuCore
-
-import numpy as np
 
 
 def modularRange(start, end, step, mod):
@@ -19,7 +17,7 @@ def arrays_of_times(start, end, step):
     diff = end - start
     startSec = (start.hour * 60 + start.minute) * 60 + start.second  # Convert to seconds
     endSec = startSec + (diff.days * 24 * 3600) + diff.seconds
-    return np.array([add_delta(start, secs - startSec) for secs in modularRange(startSec, endSec, step, 24 * 60 * 60 * 365)])
+    return [add_delta(start, secs - startSec) for secs in modularRange(startSec, endSec, step, 24 * 60 * 60 * 365)]
 
 
 # start = datetime.now()
@@ -56,7 +54,6 @@ def map_dates(empty_filled, database_saved):
 
 class History:
     def get(self, metric, tail=int(3600/3)):
-        today = date.today()
         now = datetime.now()
 
         empty_datas = arrays_of_times(now - timedelta(hours=1), now, 3)
@@ -82,9 +79,8 @@ class History:
                     'date': str(cpucore_metric.cpu.time),
                     cpucore_metric.name: float(cpucore_metric.load)
                 }
-        output = list(reversed(history[-tail:]))
-        datas = map_dates(empty_datas, history)
-        if history[0]['date'] != empty_datas[0].strftime('%Y-%m-%d %H:%M:%S'):
+        # An empty history (fresh database) must not raise IndexError.
+        if not history or history[0]['date'] != empty_datas[0].strftime('%Y-%m-%d %H:%M:%S'):
             history.append({
                 'date': empty_datas[0].strftime('%Y-%m-%d %H:%M:%S'),
                 'cpu1': None,

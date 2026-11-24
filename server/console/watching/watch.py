@@ -36,8 +36,7 @@ screen."""
 
 class _GetchUnix:
     def __init__(self):
-        import tty
-        import sys
+        pass
 
     def __call__(self):
         import sys
@@ -55,7 +54,7 @@ class _GetchUnix:
 
 class _GetchWindows:
     def __init__(self):
-        import msvcrt
+        pass
 
     def __call__(self):
         import msvcrt
@@ -105,7 +104,7 @@ class CursesPrinter(object):
 
         def loop(a_list):
             time.sleep(1)
-            char = getch()
+            getch()
             a_list.append(True)
             # print("'%s'" % char)
             # while not getch() != '':

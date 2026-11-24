@@ -1,35 +1,13 @@
 # -*- coding: utf-8 -*-
-"""Authentication tests: run with `python -m pytest test/test_auth.py`."""
+"""Authentication tests."""
 
 import os
-import tempfile
 
-_TMP = tempfile.mkdtemp(prefix='neverdie-test-')
-os.environ['NEVERDIE_DB'] = os.path.join(_TMP, 'test.sqlite')
-os.environ['NEVERDIE_INSTANCE_DIR'] = os.path.join(_TMP, 'instance')
-os.environ.pop('NEVERDIE_SECRET_KEY', None)
+import pytest
 
-import pytest  # noqa: E402
-
-from server.application import APP  # noqa: E402
-from server.models.user import User  # noqa: E402
-from server.storage.main import Datastore  # noqa: E402
-import server.web.api.middleware as middleware  # noqa: E402
-import server.web.api.monitor  # noqa: E402,F401  (registers protected routes)
-
-PASSWORD = 'correct horse battery staple'
-
-
-@pytest.fixture
-def client():
-    Datastore()
-    User.delete().execute()
-    user = User(username='alice')
-    user.set_password(PASSWORD)
-    user.save()
-    middleware.LOGIN_THROTTLE.reset('127.0.0.1')
-    with APP.test_client() as test_client:
-        yield test_client
+from conftest import PASSWORD
+from server.application import APP
+from server.models.user import User
 
 
 def login(client, username='alice', password=PASSWORD):
@@ -81,8 +59,12 @@ def test_rejected_credentials(client, payload):
 
 
 def test_login_get_is_not_allowed(client):
-    assert client.get('/api/auth/login').status_code == 405
-    assert client.get('/api/auth/logout').status_code == 405
+    # 405, or 404 once the static catch-all route is registered.
+    for path in ('/api/auth/login', '/api/auth/logout'):
+        response = client.get(path)
+        assert response.status_code in (404, 405)
+        assert b'connected' not in response.data
+    assert client.get('/api/metrics').status_code == 401
 
 
 def test_login_is_throttled_after_failures(client):
