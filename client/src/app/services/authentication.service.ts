@@ -1,53 +1,71 @@
-import { Injectable } from '@angular/core';
-import { HttpClient, HttpHeaders } from '@angular/common/http';
+import { HttpClient } from '@angular/common/http';
+import { Injectable, inject } from '@angular/core';
 import { Router } from '@angular/router';
+import { BehaviorSubject, Observable, catchError, map, of, shareReplay, tap } from 'rxjs';
 
+import { User } from '../models/user';
 
-import { BehaviorSubject } from 'rxjs';
-import { Observable } from 'rxjs';
-// import 'rxjs/add/operator/map';
+interface AuthResponse {
+  connected?: boolean;
+  user?: { uid: string };
+}
 
-import {
-    User
-} from '../models';
-
-@Injectable()
+@Injectable({ providedIn: 'root' })
 export class AuthenticationService {
+  private readonly http = inject(HttpClient);
+  private readonly router = inject(Router);
 
-    private loggedIn = new BehaviorSubject<boolean>(true); // {1}
+  /** Nobody is logged in until the server says otherwise. */
+  private readonly loggedIn = new BehaviorSubject<boolean>(false);
 
-    constructor(private http: HttpClient, private router: Router) {
-        this.http.get<any>('/api/auth').subscribe((data) => {
-            this.loggedIn.next(data.connected);
-        }, () => {
-            this.loggedIn.next(false);
-        });
-    }
+  /** Asks the server once whether the session cookie is still valid. */
+  private readonly sessionCheck$: Observable<boolean> = this.http
+    .get<AuthResponse>('/api/auth')
+    .pipe(
+      map((data) => data?.connected === true),
+      // The Flask API answers an anonymous call with a redirect to the SPA (HTML),
+      // which HttpClient reports as an error: treat it as "not logged in".
+      catchError(() => of(false)),
+      tap((connected) => this.loggedIn.next(connected)),
+      shareReplay(1),
+    );
 
-    isLoggedIn(): Observable<boolean> {
-        return this.loggedIn; // {2}
-    }
+  isLoggedIn(): Observable<boolean> {
+    return this.loggedIn.asObservable();
+  }
 
-    login(username: string, password: string) {
-        return this.http.post<any>('/api/auth/login', { username: username, password: password }).subscribe((data) => {
-            if (data.user) {
-                const userConnected = new User();
-                userConnected.id = data.user.uid;
-                userConnected.username = username;
-                localStorage.setItem('currentUser', JSON.stringify(userConnected));
-                this.loggedIn.next(true);
-                this.router.navigate(['/']);
-            }
-        }, error => { console.log(error); });
-    }
+  /** Resolves once the initial session check is done (used by the route guard). */
+  checkSession(): Observable<boolean> {
+    return this.loggedIn.value ? of(true) : this.sessionCheck$;
+  }
 
-    logout() {
-        // remove user from local storage to log user out
-        this.http.post('/api/auth/logout', {}).subscribe((disconnected) => {
-            console.log(disconnected);
-            localStorage.removeItem('currentUser');
-            this.loggedIn.next(false);
-            this.router.navigate(['/login']);
-        });
-    }
+  /** Emits `true` on success (and navigates home), `false` on bad credentials. */
+  login(username: string, password: string): Observable<boolean> {
+    return this.http.post<AuthResponse>('/api/auth/login', { username, password }).pipe(
+      map((data) => {
+        if (!data?.user) {
+          return false;
+        }
+        const user: User = { id: data.user.uid, username };
+        localStorage.setItem('currentUser', JSON.stringify(user));
+        this.loggedIn.next(true);
+        void this.router.navigate(['/']);
+        return true;
+      }),
+      catchError(() => of(false)),
+    );
+  }
+
+  logout(): void {
+    this.http.post('/api/auth/logout', {}).subscribe({
+      complete: () => this.clearSession(),
+      error: () => this.clearSession(),
+    });
+  }
+
+  private clearSession(): void {
+    localStorage.removeItem('currentUser');
+    this.loggedIn.next(false);
+    void this.router.navigate(['/login']);
+  }
 }

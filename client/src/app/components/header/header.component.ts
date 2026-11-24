@@ -1,26 +1,42 @@
-import { Component, OnInit } from '@angular/core';
-import { AuthenticationService } from '../../services/authentication.service';
+import { Component, inject, signal } from '@angular/core';
+import { toSignal } from '@angular/core/rxjs-interop';
+import { MatButtonModule } from '@angular/material/button';
+import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatIconModule } from '@angular/material/icon';
+import { MatInputModule } from '@angular/material/input';
+import { MatMenuModule } from '@angular/material/menu';
+import { MatToolbarModule } from '@angular/material/toolbar';
+import { RouterLink } from '@angular/router';
 
-import { Observable } from 'rxjs';
+import { AuthenticationService } from '../../services/authentication.service';
 
 @Component({
   selector: 'app-header',
+  imports: [
+    RouterLink,
+    MatToolbarModule,
+    MatButtonModule,
+    MatIconModule,
+    MatFormFieldModule,
+    MatInputModule,
+    MatMenuModule,
+  ],
   templateUrl: './header.component.html',
-  styleUrls: ['./header.component.scss']
+  styleUrl: './header.component.scss',
 })
-export class HeaderComponent implements OnInit {
-  isLoggedIn$: Observable<boolean>;
+export class HeaderComponent {
+  private readonly authService = inject(AuthenticationService);
 
-  constructor(
-    private authService: AuthenticationService
-    ) { }
+  readonly isLoggedIn = toSignal(this.authService.isLoggedIn(), { initialValue: false });
 
-  ngOnInit() {
-    this.isLoggedIn$ = this.authService.isLoggedIn();
+  /** Search box value. Not wired to any API endpoint yet. */
+  readonly searchTerm = signal('');
+
+  search(term: string): void {
+    this.searchTerm.set(term);
   }
 
-  onLogout() {
+  onLogout(): void {
     this.authService.logout();
   }
-
 }

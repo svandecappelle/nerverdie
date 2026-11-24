@@ -1,31 +1,27 @@
-import { TestBed, async } from '@angular/core/testing';
-import { AppComponent } from './app.component';
+import { provideHttpClient } from '@angular/common/http';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { TestBed } from '@angular/core/testing';
+import { provideRouter } from '@angular/router';
 
-describe('AppComponent', () => {
-  beforeEach(async(() => {
+import { App } from './app.component';
+import { AuthenticationService } from './services/authentication.service';
+
+describe('App', () => {
+  beforeEach(() => {
     TestBed.configureTestingModule({
-      declarations: [
-        AppComponent
-      ],
-    }).compileComponents();
-  }));
-
-  it('should create the app', () => {
-    const fixture = TestBed.createComponent(AppComponent);
-    const app = fixture.debugElement.componentInstance;
-    expect(app).toBeTruthy();
+      providers: [provideRouter([]), provideHttpClient(), provideHttpClientTesting()],
+    });
   });
 
-  it(`should have as title 'client'`, () => {
-    const fixture = TestBed.createComponent(AppComponent);
-    const app = fixture.debugElement.componentInstance;
-    expect(app.title).toEqual('client');
-  });
+  it('hides the toolbar until the user is logged in', async () => {
+    const fixture = TestBed.createComponent(App);
+    await fixture.whenStable();
+    expect(fixture.nativeElement.querySelector('mat-toolbar')).toBeNull();
 
-  it('should render title in a h1 tag', () => {
-    const fixture = TestBed.createComponent(AppComponent);
-    fixture.detectChanges();
-    const compiled = fixture.debugElement.nativeElement;
-    expect(compiled.querySelector('h1').textContent).toContain('Welcome to client!');
+    TestBed.inject(AuthenticationService).checkSession().subscribe();
+    TestBed.inject(HttpTestingController).expectOne('/api/auth').flush({ connected: true });
+    await fixture.whenStable();
+
+    expect(fixture.nativeElement.querySelector('mat-toolbar')?.textContent).toContain('Neverdie');
   });
 });

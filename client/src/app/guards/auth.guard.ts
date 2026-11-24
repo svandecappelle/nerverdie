@@ -1,20 +1,13 @@
-import { Injectable } from '@angular/core';
-import { Router, CanActivate, ActivatedRouteSnapshot, RouterStateSnapshot } from '@angular/router';
-import { Observable } from 'rxjs';
+import { inject } from '@angular/core';
+import { CanActivateFn, Router } from '@angular/router';
+import { map } from 'rxjs';
 
-import { AuthenticationService } from './../services/authentication.service';
+import { AuthenticationService } from '../services/authentication.service';
 
-@Injectable()
-export class AuthGuard implements CanActivate {
-
-    constructor(private router: Router, private authService: AuthenticationService) {}
-
-    canActivate(route: ActivatedRouteSnapshot, state: RouterStateSnapshot): Observable<boolean>|boolean {
-        this.authService.isLoggedIn().subscribe((connected) => {
-            if (!connected) {
-                this.router.navigate(['login']);
-            }
-        });
-        return this.authService.isLoggedIn();
-    }
-}
+/** Lets the route through only once the server has confirmed the session. */
+export const authGuard: CanActivateFn = () => {
+  const router = inject(Router);
+  return inject(AuthenticationService)
+    .checkSession()
+    .pipe(map((connected) => connected || router.createUrlTree(['/login'])));
+};
