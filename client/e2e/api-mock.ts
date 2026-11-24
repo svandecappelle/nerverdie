@@ -19,13 +19,58 @@ export const API_FIXTURES: Record<string, unknown> = {
   ],
 };
 
+/** Content-Security-Policy sent by the Flask server in production. */
+export const PRODUCTION_CSP = [
+  "default-src 'self'",
+  "script-src 'self'",
+  "style-src 'self' 'unsafe-inline'",
+  "img-src 'self' data:",
+  "font-src 'self' data:",
+  "connect-src 'self'",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'none'",
+].join('; ');
+
 /**
- * Mocks `/api/*`. Like Flask's `login_required`, anonymous calls get the SPA
- * (HTML) instead of JSON until `admin` / `password` logs in.
+ * Serves every page with the production CSP and records violations in
+ * `window.__cspViolations` (read it back with `cspViolations(page)`).
+ */
+export async function enforceCsp(page: Page): Promise<void> {
+  await page.addInitScript(() => {
+    const violations: string[] = [];
+    (window as unknown as { __cspViolations: string[] }).__cspViolations = violations;
+    document.addEventListener('securitypolicyviolation', (e) =>
+      violations.push(`${e.violatedDirective} ${e.blockedURI}`),
+    );
+  });
+  await page.route(
+    (url) => !url.pathname.startsWith('/api/'),
+    async (route) => {
+      if (route.request().resourceType() !== 'document') {
+        return route.fallback();
+      }
+      const response = await route.fetch();
+      return route.fulfill({
+        response,
+        headers: { ...response.headers(), 'content-security-policy': PRODUCTION_CSP },
+      });
+    },
+  );
+}
+
+export function cspViolations(page: Page): Promise<string[]> {
+  return page.evaluate(() => (window as unknown as { __cspViolations: string[] }).__cspViolations);
+}
+
+/**
+ * Mocks `/api/*` like the Flask API: protected routes answer 401 (JSON) until
+ * `admin` / `password` logs in, unknown routes 404 (JSON).
  */
 export async function mockApi(page: Page): Promise<void> {
   let loggedIn = false;
-  const html = { status: 200, contentType: 'text/html', body: '<!doctype html><html></html>' };
+  const unauthorized = { status: 401, json: { error: 'unauthorized' } };
 
   await page.route('**/api/**', async (route) => {
     const url = new URL(route.request().url());
@@ -50,7 +95,7 @@ export async function mockApi(page: Page): Promise<void> {
       return route.fulfill({ json: { message: 'ok' } });
     }
     if (!loggedIn) {
-      return route.fulfill(html);
+      return route.fulfill(unauthorized);
     }
     if (endpoint === 'auth') {
       return route.fulfill({
@@ -60,6 +105,6 @@ export async function mockApi(page: Page): Promise<void> {
     if (endpoint in API_FIXTURES) {
       return route.fulfill({ json: API_FIXTURES[endpoint] });
     }
-    return route.fulfill({ status: 404, body: 'Not found' });
+    return route.fulfill({ status: 404, json: { error: 'not found' } });
   });
 }

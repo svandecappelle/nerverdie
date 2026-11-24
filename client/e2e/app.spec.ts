@@ -1,9 +1,27 @@
 import { expect, test } from '@playwright/test';
 
-import { mockApi } from './api-mock';
+import { cspViolations, enforceCsp, mockApi } from './api-mock';
 
 test.beforeEach(async ({ page }) => {
+  await enforceCsp(page);
   await mockApi(page);
+});
+
+test.afterEach(async ({ page }) => {
+  // The production CSP forbids inline scripts and external resources.
+  expect(await cspViolations(page)).toEqual([]);
+});
+
+test('the global stylesheet applies under the production CSP', async ({ page }) => {
+  await page.goto('/login');
+  await expect(page.getByText('Please login to continue')).toBeVisible();
+
+  // styles.css sets `body { margin: 0 }` and loads the Material Icons font.
+  expect(await page.evaluate(() => getComputedStyle(document.body).margin)).toBe('0px');
+  const stylesheetMedia = await page.evaluate(() =>
+    [...document.querySelectorAll<HTMLLinkElement>('link[rel=stylesheet]')].map((l) => l.media),
+  );
+  expect(stylesheetMedia.every((m) => m === '' || m === 'all')).toBe(true);
 });
 
 test('an anonymous visitor is sent to the login page', async ({ page }) => {

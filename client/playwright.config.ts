@@ -26,7 +26,8 @@ export default defineConfig({
     },
   ],
   webServer: {
-    command: `npx ng serve --port ${port}`,
+    // Production configuration: same optimised output as client/dist.
+    command: `npx ng serve --configuration production --port ${port}`,
     url: `http://localhost:${port}`,
     reuseExistingServer: !process.env['CI'],
     timeout: 120_000,
