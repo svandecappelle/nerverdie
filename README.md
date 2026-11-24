@@ -11,6 +11,12 @@ Install [uv](https://docs.astral.sh/uv/) (for instance `python -m pip install --
 uv sync
 ```
 
+* Run the API and the UI together (development):
+  ```
+  make serve
+  ```
+  The API runs on http://127.0.0.1:5000 and the UI dev server on http://localhost:4200 (it forwards `/api` to the API). Requires Node.js 22 or later; client dependencies are installed on first run. `make serve-api` starts the API only. Ctrl+C stops everything.
+  Without make (or on Windows without it, `scoop install make` / `choco install make`): ```python scripts/serve.py``` (`--no-ui` for the API only).
 * Run app:
   * In web service: ```uv run python start.py``` (options: `-H <host>`, `-P <port>`, `-t <threads>`), served by the waitress WSGI server
   * In console management: ```uv run python console.py```
@@ -23,10 +29,11 @@ uv sync
 ### Continuous integration
 GitHub Actions (`.github/workflows/ci.yml`) runs on every push to `master`, on pull requests and weekly:
 * ruff, pip-audit, and the tests with deprecation warnings treated as errors (Python 3.12);
-* the tests on Linux and Windows with Python 3.10 and 3.14.
+* the tests on Linux and Windows with Python 3.10 and 3.14;
+* for the Angular client (Node.js 24): npm audit, lint, unit tests, production build and Playwright end-to-end tests.
 
 `uv sync --locked` fails when `uv.lock` is out of date with `pyproject.toml`: run `uv lock` and commit it.
-Dependabot (`.github/dependabot.yml`) opens weekly update pull requests for the Python dependencies and the actions.
+Dependabot (`.github/dependabot.yml`) opens weekly update pull requests for the Python dependencies, the client npm packages (Angular major versions excluded: use `ng update`) and the actions.
 
 ## Users and security
 There are no default credentials. Create an account before logging in:
