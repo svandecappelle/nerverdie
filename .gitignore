@@ -107,3 +107,11 @@ include/
 
 # editors
 .vscode
+
+# Neverdie runtime databases (the generated secret key lives in instance/)
+*.sqlite
+*.sqlite-wal
+*.sqlite-shm
+*.db
+*.db-wal
+*.db-shm
