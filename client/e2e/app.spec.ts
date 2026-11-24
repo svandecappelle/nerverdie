@@ -60,13 +60,26 @@ test('logging in shows the dashboard with live charts', async ({ page }) => {
   await expect(tiles.filter({ hasText: 'cpu' })).toContainText('2 cores');
   await expect(tiles.filter({ hasText: 'system_info' })).toContainText('test-server');
 
-  // CPU, memory and network charts
-  await expect(page.locator('.highcharts-container')).toHaveCount(3);
+  // CPU, memory and network charts (Chart.js canvases)
+  const charts = page.locator('app-chart canvas');
+  await expect(charts).toHaveCount(3);
   for (const title of ['CPU', 'Memory', 'Network']) {
-    await expect(page.locator('.highcharts-title', { hasText: title })).toBeVisible();
+    await expect(page.getByRole('img', { name: title })).toBeVisible();
   }
-  await expect(page.locator('.highcharts-legend')).toContainText(['Cpu load 0']);
-  await expect(page.locator('.highcharts-legend').nth(2)).toContainText('Incoming');
+  await expect(page.getByRole('img', { name: 'CPU' })).toContainText('Cpu load 0, Cpu load 1');
+  await expect(page.getByRole('img', { name: 'Network' })).toContainText('Incoming, Outgoing');
+
+  // Every chart is actually drawn (some non-transparent pixels).
+  await expect
+    .poll(() =>
+      charts.evaluateAll((canvases) =>
+        (canvases as HTMLCanvasElement[]).map((canvas) => {
+          const { data } = canvas.getContext('2d')!.getImageData(0, 0, canvas.width, canvas.height);
+          return data.some((value, index) => index % 4 === 3 && value > 0);
+        }),
+      ),
+    )
+    .toEqual([true, true, true]);
 
   // Logout brings the login page back.
   await page.getByRole('button', { name: 'User menu' }).click();

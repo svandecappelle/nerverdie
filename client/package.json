@@ -8,7 +8,8 @@
     "watch": "ng build --watch --configuration development",
     "test": "ng test --watch=false",
     "lint": "ng lint",
-    "e2e": "playwright test"
+    "e2e": "playwright test",
+    "licenses": "node scripts/check-licenses.mjs"
   },
   "private": true,
   "packageManager": "npm@11.19.1",
@@ -21,8 +22,7 @@
     "@angular/material": "^22.3.0",
     "@angular/platform-browser": "^22.3.0",
     "@angular/router": "^22.3.0",
-    "highcharts": "^13.1.1",
-    "highcharts-angular": "^5.4.1",
+    "chart.js": "^4.6.2",
     "material-icons": "^1.13.14",
     "rxjs": "~7.8.0",
     "tslib": "^2.3.0"

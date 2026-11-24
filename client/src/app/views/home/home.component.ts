@@ -90,11 +90,7 @@ export class HomeComponent implements OnInit {
   readonly cpu = signal<LiveChart | undefined>(undefined);
 
   readonly memory: LiveChart = {
-    onPull: (data, chart) => {
-      const x = Date.now();
-      chart.series[0].addPoint([x, data.virtual[3]], true, true);
-      chart.series[1].addPoint([x, data.swap[0]], true, true);
-    },
+    onPull: (data) => [data.virtual[3], data.swap[0]],
     series: [
       { name: 'Used', data: generateEmptyData() },
       { name: 'Swap', data: generateEmptyData() },
@@ -102,11 +98,9 @@ export class HomeComponent implements OnInit {
   };
 
   readonly network: LiveChart = {
-    onPull: (data, chart) => {
-      const x = Date.now();
+    onPull: (data) => {
       const nic = data[Object.keys(data)[0]];
-      chart.series[0].addPoint([x, humanToBytes(nic.incoming.bytes)], true, true);
-      chart.series[1].addPoint([x, humanToBytes(nic.outgoing.bytes)], true, true);
+      return [humanToBytes(nic.incoming.bytes), humanToBytes(nic.outgoing.bytes)];
     },
     series: [
       { name: 'Incoming', data: generateEmptyData() },
@@ -172,12 +166,7 @@ export class HomeComponent implements OnInit {
 
     this.cpu.set({
       series,
-      onPull: (data, chart) => {
-        const x = Date.now();
-        (data.usage as number[]).forEach((load, i) =>
-          chart.series[i]?.addPoint([x, load], true, true),
-        );
-      },
+      onPull: (data) => data.usage as number[],
     });
     this.cpuHistoryPending = false;
   }
