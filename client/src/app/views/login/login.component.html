@@ -1,27 +1,35 @@
 <div class="signin-content">
-    <mat-card>
-      <mat-card-content>
-        <form [formGroup]="form" (ngSubmit)="onSubmit()">
-          <p>Please login to continue</p>
-          <mat-form-field class="full-width-input">
-            <input matInput placeholder="User" 
-                   formControlName="userName" required>
-            <mat-error *ngIf="isFieldInvalid('userName')">
-              Please inform your user name
-            </mat-error>
-          </mat-form-field>
-          <mat-form-field class="full-width-input">
-            <input matInput type="password" placeholder="Password" 
-                   formControlName="password" required>
-            <mat-error *ngIf="isFieldInvalid('userName')">
-              Please inform your password
-            </mat-error>
-          </mat-form-field>
-          
-          <button mat-raised-button color="primary" type="submit">Login</button>
-        </form>
-        <a routerLink="/register">Not have an account ?</a>
-        <mat-progress-bar class="login-in-progress" [mode]="'indeterminate'" *ngIf="loginInProgress"></mat-progress-bar>
-      </mat-card-content>
-    </mat-card>
-  </div>
+  <mat-card>
+    <mat-card-content>
+      <form [formGroup]="form" (ngSubmit)="onSubmit()">
+        <p>Please login to continue</p>
+        <mat-form-field class="full-width-input">
+          <mat-label>User</mat-label>
+          <input matInput formControlName="userName" autocomplete="username" required />
+          <mat-error>Please inform your user name</mat-error>
+        </mat-form-field>
+        <mat-form-field class="full-width-input">
+          <mat-label>Password</mat-label>
+          <input
+            matInput
+            type="password"
+            formControlName="password"
+            autocomplete="current-password"
+            required
+          />
+          <mat-error>Please inform your password</mat-error>
+        </mat-form-field>
+
+        @if (loginFailed()) {
+          <p class="login-error" role="alert">Invalid credentials</p>
+        }
+
+        <button mat-flat-button type="submit" [disabled]="loginInProgress()">Login</button>
+      </form>
+      <a routerLink="/register">Not have an account ?</a>
+      @if (loginInProgress()) {
+        <mat-progress-bar class="login-in-progress" mode="indeterminate" />
+      }
+    </mat-card-content>
+  </mat-card>
+</div>

@@ -1,93 +1,68 @@
-import { BehaviorSubject } from 'rxjs';
+import type Highcharts from 'highcharts/esm/highcharts';
 
-const UPDATE_TIME = 3 * 1000;
-export class ChartsOption {
+/** Delay between two polls of a chart endpoint. */
+export const UPDATE_TIME = 3 * 1000;
 
-    options = {
-        chart: {
-            type: 'spline',
-            zoomType: 'x',
-            animation: false,
-            // animation: Highcharts.svg, // don't animate in old IE
-            marginRight: 10,
-            events: {
-                load: function () { }
-            },
-        },
-        title: {
-            text: 'chart'
-        },
-        plotOptions: {
-            time: {
-                useUTC: false
-            },
-            area: {
-                stacking: 'normal',
-                marker: {
-                    enabled: false
-                }
-            },
-            spline: {
-                marker: {
-                    enabled: false
-                }
-            }
-        },
-        xAxis: {
-            type: 'datetime',
-            tickPixelInterval: 150
-        },
-        yAxis: {
-            title: {
-                text: 'Value'
-            },
-            plotLines: [{
-                value: 0,
-                width: 1,
-                color: '#808080'
-            }]
-        },
-        tooltip: {
-            headerFormat: '<b>{series.name}</b><br/>',
-            pointFormat: '{point.x:%Y-%m-%d %H:%M:%S}<br/>{point.y:.2f}'
-        },
-        legend: {
-            enabled: true
-        },
-        exporting: {
-            enabled: true
-        },
-        series: []
-    };
-    private puller: BehaviorSubject<any> = new BehaviorSubject<any>(false);
-    private chart: any;
+export interface ChartPoint {
+  x: number;
+  y: number | null;
+}
 
-    constructor(init: any, title: string, type: string) {
-        if (type) {
-            this.options.chart.type = type;
-        }
-        this.options.title = {
-            text: title
-        };
-        this.options.series = init;
-        const that = this;
-        this.options.chart.events.load = function () {
-            that.chart = this;
-            that.onLoad();
-        };
-    }
+export interface ChartSeries {
+  name: string;
+  data: ChartPoint[];
+}
 
-    public onLoad() {
-        setInterval(() => {
-            this.puller.next(true);
-        }, UPDATE_TIME);
-    }
+export type ChartType = 'spline' | 'areaspline' | 'area' | 'line';
 
-    public get pull() {
-        return this.puller;
-    }
+/** Builds the Highcharts options shared by every live chart of the dashboard. */
+export function buildChartOptions(
+  series: ChartSeries[],
+  title: string,
+  type: ChartType,
+): Highcharts.Options {
+  return {
+    chart: {
+      type,
+      zooming: { type: 'x' },
+      animation: false,
+      marginRight: 10,
+    },
+    title: { text: title },
+    plotOptions: {
+      area: {
+        stacking: 'normal',
+        marker: { enabled: false },
+      },
+      areaspline: {
+        marker: { enabled: false },
+      },
+      spline: {
+        marker: { enabled: false },
+      },
+    },
+    xAxis: {
+      type: 'datetime',
+      tickPixelInterval: 150,
+    },
+    yAxis: {
+      title: { text: 'Value' },
+      plotLines: [{ value: 0, width: 1, color: '#808080' }],
+    },
+    tooltip: {
+      headerFormat: '<b>{series.name}</b><br/>',
+      pointFormat: '{point.x:%Y-%m-%d %H:%M:%S}<br/>{point.y:.2f}',
+    },
+    legend: { enabled: true },
+    series: series.map((s) => ({ ...s, type }) as Highcharts.SeriesOptionsType),
+  };
+}
 
-    public get series() {
-        return this.chart.series;
-    }
+/** One point per second for the last `minutes` minutes, all at zero. */
+export function generateEmptyData(minutes = 10, now = Date.now()): ChartPoint[] {
+  const data: ChartPoint[] = [];
+  for (let i = -minutes * 60; i <= 0; i += 1) {
+    data.push({ x: now + (i + 3) * 1000, y: 0 });
+  }
+  return data;
 }

@@ -1,30 +1,30 @@
-<div class="title">
-  {{tile.text}}
-</div>
-<div *ngIf="value !== 'Contact lost'" class="ok">
-  <div *ngIf="type === 'date'">
-    {{ colorizeAndFormat(value) | amCalendar }}
-  </div>
-  <div *ngIf="type === 'duration'">
-    {{ colorizeAndFormat(value / 1000 | amDuration: 'seconds') }}
-  </div>
-  <div *ngIf="type === 'status'">
-    {{ colorizeAndFormat(value) }}
-  </div>
-  <div *ngIf="type === 'string'">
-    {{ colorizeAndFormat(value) }}
-  </div>
-  <div *ngIf="type === 'number'">
-    {{ colorizeAndFormat(value) | number}}
-  </div>
+@let t = tile();
+<div class="title">{{ t.text }}</div>
 
-  <span class="req-time">
-    last request duration {{ updateDuration() }}secs
-  </span>
-</div>
+@if (lost()) {
+  <div class="ko">{{ t.value }}</div>
+} @else {
+  <div class="ok">
+    @switch (t.type) {
+      @case ('date') {
+        <div>{{ t.value | date: 'medium' }}</div>
+      }
+      @case ('duration') {
+        <div>{{ humanDuration() }}</div>
+      }
+      @case ('status') {
+        <div>Up</div>
+      }
+      @case ('number') {
+        <div>{{ t.prefix }}{{ t.value | number }}{{ t.suffix }}</div>
+      }
+      @default {
+        <div>{{ t.value }}</div>
+      }
+    }
 
-<div *ngIf="value === 'Contact lost'" class="ko">
-  <div>
-    {{ colorizeAndFormat(value) }}
+    @if (t.duration !== undefined) {
+      <span class="req-time">last request duration {{ t.duration }}secs</span>
+    }
   </div>
-</div>
+}

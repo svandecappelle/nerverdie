@@ -1,27 +1,32 @@
-# Client
+# Neverdie client
 
-This project was generated with [Angular CLI](https://github.com/angular/angular-cli) version 6.2.5.
+Angular 22 single page app (standalone components, zoneless, Angular Material 3, Highcharts).
+It talks to the Flask API under `/api/*`; in production Flask serves the build from `client/dist`
+(`server/web/ui/static.py`).
 
-## Development server
+## Requirements
 
-Run `ng serve` for a dev server. Navigate to `http://localhost:4200/`. The app will automatically reload if you change any of the source files.
+Node.js `^22.22.3 || ^24.15.0 || >=26` (required by Angular CLI 22).
 
-## Code scaffolding
+```bash
+npm ci
+```
 
-Run `ng generate component component-name` to generate a new component. You can also use `ng generate directive|pipe|service|class|guard|interface|enum|module`.
+## Commands
 
-## Build
+| Command          | What it does                                                                    |
+| ---------------- | ------------------------------------------------------------------------------- |
+| `npm start`      | Dev server on http://localhost:4200, proxies `/api` to Flask on `127.0.0.1:5000` (`proxy.conf.json`) |
+| `npm run build`  | Production build into `dist/` (no `browser/` sub-folder, served as is by Flask) |
+| `npm test`       | Unit tests (Vitest, through `ng test`)                                          |
+| `npm run lint`   | ESLint (angular-eslint)                                                         |
+| `npm run e2e`    | End-to-end tests (Playwright) against the dev server, with `/api` mocked        |
 
-Run `ng build` to build the project. The build artifacts will be stored in the `dist/` directory. Use the `--prod` flag for a production build.
+Playwright needs a browser: run `npx playwright install chromium` once, or reuse an
+installed one with `PLAYWRIGHT_CHANNEL=msedge npm run e2e` (or `chrome`).
 
-## Running unit tests
+## Licensing note
 
-Run `ng test` to execute the unit tests via [Karma](https://karma-runner.github.io).
-
-## Running end-to-end tests
-
-Run `ng e2e` to execute the end-to-end tests via [Protractor](http://www.protractortest.org/).
-
-## Further help
-
-To get more help on the Angular CLI use `ng help` or go check out the [Angular CLI README](https://github.com/angular/angular-cli/blob/master/README.md).
+Highcharts is **not free for commercial use**: it is free only for personal, school and
+non-profit projects. Any commercial use needs a Highcharts licence
+(https://shop.highcharts.com/). `highcharts-angular` itself is MIT.

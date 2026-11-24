@@ -1,28 +1,28 @@
-<div *ngIf="isLoggedIn$ | async">
-  <mat-toolbar color="primary" class="mat-elevation-z6">
+@if (isLoggedIn()) {
+  <mat-toolbar class="mat-elevation-z6 toolbar">
     <span>Neverdie</span>
     <span class="sub-title">monitor servers</span>
 
     <nav>
-      <button mat-icon-button routerLink="/">
-        <mat-icon aria-label="Home">dashboard</mat-icon>
-      </button>
-      <button mat-icon-button routerLink="/all_nodes">
-        <mat-icon aria-label="Reload library">view_module</mat-icon>
-      </button>
-      <button mat-icon-button routerLink="/admin">
-        <mat-icon aria-label="Admin panel">settings</mat-icon>
-      </button>
+      <a mat-icon-button routerLink="/" aria-label="Home">
+        <mat-icon>dashboard</mat-icon>
+      </a>
+      <a mat-icon-button routerLink="/all_nodes" aria-label="All nodes">
+        <mat-icon>view_module</mat-icon>
+      </a>
+      <a mat-icon-button routerLink="/admin" aria-label="Admin panel">
+        <mat-icon>settings</mat-icon>
+      </a>
     </nav>
 
     <span class="spacer"></span>
-    
-    <mat-form-field class="search">
-      <input matInput (change)="search($event.target.value)">
+
+    <mat-form-field class="search" subscriptSizing="dynamic">
+      <input matInput aria-label="Search" #searchInput (change)="search(searchInput.value)" />
       <mat-icon matSuffix>search</mat-icon>
     </mat-form-field>
 
-    <button mat-icon-button [matMenuTriggerFor]="menu">
+    <button mat-icon-button [matMenuTriggerFor]="menu" aria-label="User menu">
       <mat-icon>more_vert</mat-icon>
     </button>
     <mat-menu #menu="matMenu">
@@ -30,11 +30,10 @@
         <mat-icon>exit_to_app</mat-icon>
         <span>Logout</span>
       </button>
-
-      <button mat-menu-item routerLink="/profile">
+      <a mat-menu-item routerLink="/profile">
         <mat-icon>account_circle</mat-icon>
         <span>Edit profile</span>
-      </button>
+      </a>
     </mat-menu>
   </mat-toolbar>
-</div>
+}
