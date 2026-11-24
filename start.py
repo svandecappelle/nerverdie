@@ -4,14 +4,13 @@
 import logging
 import os
 import importlib
-import re
 
 from server.application import APP as app
 from server.application import flaskrun
-
-ROUTES_FOLDERS = ["server/web"]
-
 from server.settings.logger import LoggerConfigurator
+
+BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+ROUTES_FOLDERS = [os.path.join("server", "web")]
 
 def walk(directory, only_regular_files=True):
     out = []
@@ -32,13 +31,16 @@ class Starter(object):
     def routing(self):
         """Routing application"""
         for route_folder in ROUTES_FOLDERS:
-            modules = walk(route_folder)
+            modules = walk(os.path.join(BASE_DIR, route_folder))
             for module in modules:
-                if module.endswith('.py'):
-                    route_file = re.sub(r'/', r'.', module)[:-3]
-                    self.logger.info("importing routes: %s" % route_file)
-                    route_module = importlib.import_module(route_file)
-       
+                if module.endswith('.py') and os.path.basename(module) != '__init__.py':
+                    # Build the dotted module name from the path, whatever
+                    # the OS path separator is ('\\' on Windows).
+                    relative = os.path.relpath(module, BASE_DIR)
+                    route_file = os.path.splitext(relative)[0].replace(os.sep, '.')
+                    self.logger.info("importing routes: %s", route_file)
+                    importlib.import_module(route_file)
+
     def launch(self):
         """Launch api server"""
         self.logger.info("Starting server")

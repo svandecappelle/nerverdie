@@ -1,10 +1,14 @@
 import { Component } from '@angular/core';
 
+import { ContentComponent } from './components/content/content.component';
+import { HeaderComponent } from './components/header/header.component';
+
 @Component({
   selector: 'app-root',
-  templateUrl: './app.component.html',
-  styleUrls: ['./app.component.css']
+  imports: [HeaderComponent, ContentComponent],
+  template: `
+    <app-header />
+    <app-content />
+  `,
 })
-export class AppComponent {
-  title = 'client';
-}
+export class App {}

@@ -1,58 +1,50 @@
-import { Component, OnInit, ChangeDetectorRef } from '@angular/core';
-import { Router, ActivatedRoute } from '@angular/router';
+import { Component, inject, signal } from '@angular/core';
+import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
+import { MatButtonModule } from '@angular/material/button';
+import { MatCardModule } from '@angular/material/card';
+import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatInputModule } from '@angular/material/input';
+import { MatProgressBarModule } from '@angular/material/progress-bar';
+import { RouterLink } from '@angular/router';
 
-import { FormGroup, FormBuilder, Validators } from '@angular/forms';
-import { AlertService, AuthenticationService } from '../../services/index';
-// import { InstallService } from '../install/install.service';
+import { AuthenticationService } from '../../services/authentication.service';
 
 @Component({
   selector: 'app-login',
+  imports: [
+    ReactiveFormsModule,
+    RouterLink,
+    MatCardModule,
+    MatFormFieldModule,
+    MatInputModule,
+    MatButtonModule,
+    MatProgressBarModule,
+  ],
   templateUrl: './login.component.html',
-  styleUrls: ['./login.component.scss']
+  styleUrl: './login.component.scss',
 })
-export class LoginComponent implements OnInit {
-    form: FormGroup;
-    private formSubmitAttempt: boolean;
-    private loginInProgress: boolean;
+export class LoginComponent {
+  private readonly authService = inject(AuthenticationService);
 
-    constructor(
-      private ref: ChangeDetectorRef,
-      private fb: FormBuilder,
-      private authService: AuthenticationService,
-      // private installService: InstallService,
-      private router: Router
-    ) {}
+  readonly form = inject(FormBuilder).nonNullable.group({
+    userName: ['', Validators.required],
+    password: ['', Validators.required],
+  });
 
-    ngOnInit() {
-      /*this.installService.check().subscribe((result) => {
-        console.log(result);
-        if (!result.version) {
-          this.router.navigate(['/install']);
-        }
-      });
-      */
-      this.form = this.fb.group({
-        userName: ['', Validators.required],
-        password: ['', Validators.required]
-      });
+  readonly loginInProgress = signal(false);
+  readonly loginFailed = signal(false);
+
+  onSubmit(): void {
+    this.form.markAllAsTouched();
+    if (this.form.invalid) {
+      return;
     }
-
-    isFieldInvalid(field: string) {
-      this.loginInProgress = false;
-      return (
-        (!this.form.get(field).valid && this.form.get(field).touched) ||
-        (this.form.get(field).untouched && this.formSubmitAttempt)
-      );
-    }
-
-    onSubmit() {
-      this.loginInProgress = true;
-      this.ref.markForCheck();
-      if (this.form.valid) {
-        this.authService.login(this.form.value.userName, this.form.value.password);
-        this.loginInProgress = false;
-      }
-      this.formSubmitAttempt = true;
-    }
+    const { userName, password } = this.form.getRawValue();
+    this.loginInProgress.set(true);
+    this.loginFailed.set(false);
+    this.authService.login(userName, password).subscribe((success) => {
+      this.loginInProgress.set(false);
+      this.loginFailed.set(!success);
+    });
   }
-
+}

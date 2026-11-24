@@ -1,6 +1,12 @@
+import os
+
 from peewee import SqliteDatabase, Model
 
-db = SqliteDatabase('db.sqlite')
+DB_PATH = os.environ.get('NEVERDIE_DB', 'db.sqlite')
+
+db = SqliteDatabase(DB_PATH, pragmas={
+    'journal_mode': 'wal',
+    'cache_size': -32 * 1000})
 
 
 class BaseModel(Model):

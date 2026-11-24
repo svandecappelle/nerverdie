@@ -2,9 +2,7 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
 
-from server import utils
 
-import server.console.watching.formatters as formatters
 from server.console.watching.formatters import FormatterPrinter
 
 from server.console.metric import Metric

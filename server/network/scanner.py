@@ -51,7 +51,7 @@ class NetworkDiscoverer:
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s.settimeout(0.3)
-            result = s.connect((ip, port))
+            s.connect((ip, port))
             s.shutdown(1)
             return True
         except Exception:
@@ -68,9 +68,13 @@ class NetworkDiscoverer:
         except Exception:
             return "NA"
 
-    def discover_all(self):
+    def discover_all(self, network, timeout='0.2'):
+        """Ping and port-scan every host of `network` (e.g. '192.168.10.0/24').
 
+        Only scan networks you are responsible for. Returns {ip: ports_status}.
+        """
         signal.signal(signal.SIGINT, signal_handler)
+        results = {}
 
         # Color Output
         col_green = "\033[0;32m"
@@ -82,21 +86,20 @@ class NetworkDiscoverer:
         # Loop through Subnet and try to ping and portscan host
         for ip in IPSet([network]):
             try:
-                response = subprocess.check_output([
+                subprocess.check_output([  # noqa: S603, S607 (no shell, fixed command)
                         'ping',
                         '-c',
                         '3',
                         "-W",
                         "1",
                         "-i",
-                        timeout,
+                        str(timeout),
                         str(ip)
                     ],
                     stderr=subprocess.STDOUT,
                     universal_newlines=True
                 )
                 online = False
-                icmp = True
                 hostname = str(self.lookup(str(ip)))
                 ports_status = dict(map(lambda x: (x, False), scanning_ports.keys()))
                 for (port, properties) in scanning_ports.items():
@@ -118,21 +121,21 @@ class NetworkDiscoverer:
                     ))
                 else:
                     print(str(ip) + ", " + col_red + "OFFLINE" + col_norm + ", NA")
-                return ports_status
+                results[str(ip)] = ports_status
 
-        # Catch Error
+            # Catch Error
             except subprocess.CalledProcessError:
-                print (str(ip)+", "+col_red+"OFFLINE"+col_norm+", NA")
+                print(str(ip) + ", " + col_red + "OFFLINE" + col_norm + ", NA")
+        return results
 
 
-if __name__ == "__main__":
-    # Pasring the Arguments
+def parse_args(argv=None):
     parser = argparse.ArgumentParser(description='Subnet Scanner')
     parser.add_argument('-n', '--network', help='e.g. 192.168.10.0/24', required=True)
     parser.add_argument('-t', '--timeout', help='timeout in seconds', default='0.2')
-    args = vars(parser.parse_args())
-    network = str(args['network'])
-    timeout = str(args['timeout'])
+    return parser.parse_args(argv)
 
-    discoverer = NetworkDiscoverer()
-    discoverer.discover_all()
+
+if __name__ == "__main__":
+    args = parse_args()
+    NetworkDiscoverer().discover_all(args.network, args.timeout)

@@ -1,7 +1,6 @@
 """Console call menu"""
 # -*- coding: utf-8 -*-
 import curses
-import os
 import traceback
 
 from server.console.watching import watch
@@ -58,7 +57,7 @@ class CursedMenu(object):
                 self.handle_request(request)
 
         # Also calls __exit__, but adds traceback after
-        except Exception as exception:
+        except Exception:
             self.__exit__()
             traceback.print_exc()
 
@@ -118,7 +117,8 @@ class CursedMenu(object):
 
     def __exit__(self):
         curses.endwin()
-        os.system('clear')
+        # Clear the terminal (ANSI escape, no shell command).
+        print('\033[2J\033[H', end='', flush=True)
 
 
 def main():

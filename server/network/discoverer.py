@@ -1,6 +1,6 @@
 import logging
 import math
-from scapy.all import *
+import scapy.all  # noqa: F401  (loads scapy.config, scapy.layers.l2, scapy.utils)
 import socket
 import errno
 
@@ -23,7 +23,7 @@ class NetworkDiscoverer():
         netmask = self.long2net(bytes_netmask)
         net = "%s/%s" % (network, netmask)
         if netmask < 16:
-            self.logger.warn("%s is too big. skipping" % net)
+            self.logger.warning("%s is too big. skipping" % net)
             return None
 
         return net
@@ -32,7 +32,7 @@ class NetworkDiscoverer():
         self.logger.info("arping %s on %s" % (net, interface))
         try:
             ans, unans = scapy.layers.l2.arping(net, iface=interface, timeout=timeout, verbose=True)
-            for s, r in ans.res:
+            for _sent, r in ans.res:
                 line = r.sprintf("%Ether.src%  %ARP.psrc%")
                 try:
                     hostname = socket.gethostbyaddr(r.psrc)
@@ -50,7 +50,7 @@ class NetworkDiscoverer():
     def discover_all(self):
         for network, netmask, _, interface, address, _ in scapy.config.conf.route.routes:
             # skip loopback network and default gw
-            if network == 0 or interface == 'lo' or address == '127.0.0.1' or address == '0.0.0.0':
+            if network == 0 or interface == 'lo' or address == '127.0.0.1' or address == '0.0.0.0':  # noqa: S104 (comparison, not a bind)
                 continue
 
             if netmask <= 0 or netmask == 0xFFFFFFFF:
@@ -60,7 +60,7 @@ class NetworkDiscoverer():
 
             if interface != scapy.config.conf.iface:
                 # see http://trac.secdev.org/scapy/ticket/537
-                self.logger.warn("skipping %s because scapy currently doesn't support arping on non-primary network interfaces", net)
+                self.logger.warning("skipping %s because scapy currently doesn't support arping on non-primary network interfaces", net)
                 continue
 
             if net:

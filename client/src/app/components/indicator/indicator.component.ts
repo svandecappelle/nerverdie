@@ -1,63 +1,36 @@
-import { Component, OnInit, Input } from '@angular/core';
+import { DatePipe, DecimalPipe } from '@angular/common';
+import { Component, computed, input } from '@angular/core';
+
+import { humanizeDuration } from './format';
+
+export const CONTACT_LOST = 'Contact lost';
+
+export type IndicatorType = 'date' | 'duration' | 'status' | 'string' | 'number';
+
+export interface IndicatorTile {
+  text: string;
+  type: IndicatorType;
+  prefix?: string;
+  suffix?: string;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  value?: any;
+  /** Duration of the last request, in seconds. */
+  duration?: number;
+}
 
 @Component({
   selector: 'app-indicator',
+  imports: [DatePipe, DecimalPipe],
   templateUrl: './indicator.component.html',
-  styleUrls: ['./indicator.component.css']
+  styleUrl: './indicator.component.css',
 })
-export class IndicatorComponent implements OnInit {
+export class IndicatorComponent {
+  readonly tile = input.required<IndicatorTile>();
 
-  @Input()
-  type: string = "string";
-
-  @Input()
-  value: string = "undefined";
-
-  @Input()
-  tile: any;
-
-  duration: number;
-
-  constructor() { }
-
-  ngOnInit() {
-  }
-
-  colorizeAndFormat(status) {
-    if (status !== 'Contact lost') {
-      if (this.tile.color !== 'lightgreen') {
-        setTimeout(() => {
-          this.tile.color = 'lightgreen';
-        });
-      }
-      // console.log(this.tile.text, status);
-    } else {
-      if (this.tile.color !== 'crimson') {
-        setTimeout(() => {
-          this.tile.color = 'crimson';
-        });
-      }
-    }
-    if (this.type === "status") {
-      return status !== 'Contact lost' ? 'Up' : status;
-    } else if (this.type === 'number') {
-      status = this.formatNumber(status);
-    }
-
-    return status;
-  }
-
-  formatNumber(number) {
-    let prefix = this.tile.prefix ? this.tile.prefix : '';
-    let suffix = this.tile.suffix ? this.tile.suffix : '';
-
-    return `${prefix}${number}${suffix}`;
-  }
-
-  updateDuration() {
-    if (this.tile.request.duration) {
-      this.duration = this.tile.request.duration
-    }
-    return this.duration;
-  }
+  protected readonly lost = computed(() => this.tile().value === CONTACT_LOST);
+  protected readonly humanDuration = computed(() => {
+    // The server sends the uptime in milliseconds.
+    const ms = Number(this.tile().value);
+    return Number.isFinite(ms) ? humanizeDuration(ms / 1000) : '';
+  });
 }

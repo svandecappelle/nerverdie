@@ -13,7 +13,7 @@ def bytes2human(value_to_format, precise=False):
     prefix = {}
     for i, s in enumerate(symbols):
         prefix[s] = 1 << (i + 1) * 10
-    for i, s in enumerate(reversed(symbols)):
+    for s in reversed(symbols):
         if value_to_format >= prefix[s]:
             value = float(value_to_format) / prefix[s]
             return '%.2f%s' % (value, s)
