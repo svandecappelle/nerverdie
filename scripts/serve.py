@@ -18,6 +18,7 @@ import signal
 import subprocess
 import sys
 import threading
+import time
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 CLIENT = os.path.join(ROOT, 'client')
@@ -142,10 +143,24 @@ def stop(process):
             os.killpg(process.pid, signal.SIGTERM)
         except ProcessLookupError:
             pass
-    try:
-        process.wait(timeout=10)
-    except subprocess.TimeoutExpired:
+    if wait_exit(process, timeout=10) is None:
         process.kill()
+
+
+def wait_exit(process, timeout):
+    """Exit code of `process`, or None if it is still running after `timeout` seconds.
+
+    Popen.wait(timeout) is not used: on Windows, a Ctrl+C arriving right as
+    its timeout expires makes CPython wait with a negative delay, which the
+    system takes as (almost) infinite, so Ctrl+C hung serve.py. time.sleep()
+    is interruptible and poll() does not block.
+    """
+    deadline = time.monotonic() + timeout
+    while True:
+        code = process.poll()
+        if code is not None or time.monotonic() >= deadline:
+            return code
+        time.sleep(0.1)
 
 
 def main(argv=None):
@@ -181,15 +196,14 @@ def main(argv=None):
         else:
             print('API: http://127.0.0.1:5000  (Ctrl+C to stop)')
 
-        # Wait until one of the processes exits.
+        # Wait until one of the processes exits (see wait_exit about Ctrl+C).
         while True:
             for name, process in processes.items():
-                try:
-                    code = process.wait(timeout=0.5)
-                except subprocess.TimeoutExpired:
-                    continue
-                print('serve: %s exited with code %s, stopping.' % (name, code))
-                return code or 1
+                code = process.poll()
+                if code is not None:
+                    print('serve: %s exited with code %s, stopping.' % (name, code))
+                    return code or 1
+            time.sleep(0.2)
     except KeyboardInterrupt:
         print('\nserve: stopping...')
         return 0
