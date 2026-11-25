@@ -1,8 +1,5 @@
 import type { ChartConfiguration, ChartDataset } from 'chart.js';
 
-/** Delay between two polls of a chart endpoint. */
-export const UPDATE_TIME = 3 * 1000;
-
 export interface ChartPoint {
   x: number;
   y: number | null;
@@ -46,6 +43,12 @@ const timeFormat = new Intl.DateTimeFormat(undefined, {
   minute: '2-digit',
   second: '2-digit',
 });
+const dayTimeFormat = new Intl.DateTimeFormat(undefined, {
+  month: '2-digit',
+  day: '2-digit',
+  hour: '2-digit',
+  minute: '2-digit',
+});
 const dateTimeFormat = new Intl.DateTimeFormat(undefined, {
   year: 'numeric',
   month: '2-digit',
@@ -59,6 +62,13 @@ const dateTimeFormat = new Intl.DateTimeFormat(undefined, {
 export function formatTime(timestamp: number): string {
   return timeFormat.format(timestamp);
 }
+
+/** Day and time, for the x axis of ranges longer than a day. */
+export function formatDayTime(timestamp: number): string {
+  return dayTimeFormat.format(timestamp);
+}
+
+const DAY = 24 * 60 * 60 * 1000;
 
 /** Full date and time in the browser's time zone, for tooltips. */
 export function formatDateTime(timestamp: number): string {
@@ -75,7 +85,7 @@ function dataset(serie: ChartSeries, index: number, type: ChartType): ChartDatas
   const filled = type === 'area' || type === 'areaspline';
   return {
     label: serie.name,
-    // Copy: the chart mutates its data when points are appended.
+    // Copy: the chart keeps its own data.
     data: serie.data.map((point) => ({ ...point })),
     borderColor: color,
     backgroundColor: filled ? withAlpha(color, 0.18) : color,
@@ -89,7 +99,7 @@ function dataset(serie: ChartSeries, index: number, type: ChartType): ChartDatas
   };
 }
 
-/** Builds the Chart.js configuration shared by every live chart of the dashboard. */
+/** Builds the Chart.js configuration shared by every chart of the dashboard. */
 export function buildChartConfig(
   series: ChartSeries[],
   title: string,
@@ -118,7 +128,15 @@ export function buildChartConfig(
           max: bounds?.max,
           border: { display: false },
           grid: { display: false },
-          ticks: { color: theme.text, maxTicksLimit: 8, callback: (value) => formatTime(Number(value)) },
+          ticks: {
+            color: theme.text,
+            maxTicksLimit: 8,
+            // Show the day too when the range spans more than a day.
+            callback(value) {
+              const span = Number(this.max) - Number(this.min);
+              return span > DAY ? formatDayTime(Number(value)) : formatTime(Number(value));
+            },
+          },
         },
         y: {
           stacked,
@@ -145,9 +163,6 @@ export function buildChartConfig(
   };
 }
 
-/** Shortest time span shown by a live chart. */
-export const MIN_WINDOW = 10 * 60 * 1000;
-
 /** Smallest and largest x of all the points, or undefined when there is none. */
 export function xBounds(datasets: { data: ChartPoint[] }[]): { min: number; max: number } | undefined {
   let min = Infinity;
@@ -159,42 +174,6 @@ export function xBounds(datasets: { data: ChartPoint[] }[]): { min: number; max:
     }
   }
   return min <= max ? { min, max } : undefined;
-}
-
-/** Time span a chart keeps on screen: its initial span, at least MIN_WINDOW. */
-export function windowFor(series: ChartSeries[]): number {
-  const bounds = xBounds(series);
-  return Math.max(MIN_WINDOW, bounds ? bounds.max - bounds.min : 0);
-}
-
-/**
- * Appends one point per series at time `x` and drops the points older than
- * `windowMs`, so that the chart keeps a sliding time window. Missing values
- * are drawn as gaps.
- */
-export function appendPoints(
-  datasets: { data: ChartPoint[] }[],
-  x: number,
-  values: (number | null | undefined)[],
-  windowMs = MIN_WINDOW,
-): void {
-  const oldest = x - windowMs;
-  datasets.forEach((set, index) => {
-    set.data.push({ x, y: values[index] ?? null });
-    const firstKept = set.data.findIndex((point) => point.x >= oldest);
-    if (firstKept > 0) {
-      set.data.splice(0, firstKept);
-    }
-  });
-}
-
-/** One point per second for the last `minutes` minutes, all at zero. */
-export function generateEmptyData(minutes = 10, now = Date.now()): ChartPoint[] {
-  const data: ChartPoint[] = [];
-  for (let i = -minutes * 60; i <= 0; i += 1) {
-    data.push({ x: now + (i + 3) * 1000, y: 0 });
-  }
-  return data;
 }
 
 /** Applies new theme colours to an existing chart configuration (theme switch). */
@@ -227,11 +206,12 @@ export const HISTORY_GAP = 10 * 1000;
 /**
  * Turns the stored history (`[{ date: 'YYYY-MM-DD HH:MM:SS', cpu0: 12.5, ... }]`,
  * server local time) into one series per key, sorted by time, with a gap where
- * the collection stopped.
+ * consecutive samples are more than `gap` ms apart (the collection stopped).
  */
 export function historyToSeries(
   history: Record<string, number | string | null>[],
   keys: string[],
+  gap = HISTORY_GAP,
 ): ChartPoint[][] {
   const samples = history
     .map((entry) => ({ x: new Date(String(entry['date']).replace(' ', 'T')).getTime(), entry }))
@@ -240,7 +220,7 @@ export function historyToSeries(
   return keys.map((key) => {
     const points: ChartPoint[] = [];
     samples.forEach(({ x, entry }, index) => {
-      if (index > 0 && x - samples[index - 1].x > HISTORY_GAP) {
+      if (index > 0 && x - samples[index - 1].x > gap) {
         points.push({ x: samples[index - 1].x + 1, y: null });
       }
       const value = entry[key];

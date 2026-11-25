@@ -1,12 +1,4 @@
-import {
-  MIN_WINDOW,
-  appendPoints,
-  buildChartConfig,
-  generateEmptyData,
-  historyToSeries,
-  windowFor,
-  xBounds,
-} from './charts';
+import { buildChartConfig, historyToSeries, xBounds } from './charts';
 
 describe('buildChartConfig', () => {
   it('applies title and series', () => {
@@ -55,56 +47,13 @@ describe('buildChartConfig', () => {
   });
 });
 
-describe('appendPoints', () => {
-  it('appends one point per series and drops the points older than the window', () => {
-    const datasets = [
-      { data: [{ x: 0, y: 1 }, { x: 5, y: 2 }] },
-      { data: [{ x: 0, y: 3 }, { x: 5, y: 4 }] },
-    ];
-    appendPoints(datasets, 12, [10, 20], 10);
-    expect(datasets[0].data).toEqual([{ x: 5, y: 2 }, { x: 12, y: 10 }]);
-    expect(datasets[1].data).toEqual([{ x: 5, y: 4 }, { x: 12, y: 20 }]);
-  });
-
-  it('lets a short series grow until it fills the window', () => {
-    const datasets = [{ data: [{ x: 0, y: 1 }] }];
-    appendPoints(datasets, 3, [2], 10);
-    appendPoints(datasets, 6, [3], 10);
-    expect(datasets[0].data.map((p) => p.x)).toEqual([0, 3, 6]);
-  });
-
-  it('draws a gap when values are missing (contact lost)', () => {
-    const datasets = [{ data: [{ x: 1, y: 1 }] }, { data: [{ x: 1, y: 1 }] }];
-    appendPoints(datasets, 2, []);
-    expect(datasets.map((d) => d.data.at(-1))).toEqual([
-      { x: 2, y: null },
-      { x: 2, y: null },
-    ]);
-  });
-});
-
-describe('xBounds and windowFor', () => {
+describe('xBounds', () => {
   it('returns the extreme x values of all series', () => {
     expect(xBounds([{ data: [{ x: 5, y: 0 }] }, { data: [{ x: 2, y: 0 }, { x: 9, y: 0 }] }])).toEqual({
       min: 2,
       max: 9,
     });
     expect(xBounds([{ data: [] }])).toBeUndefined();
-  });
-
-  it('keeps at least MIN_WINDOW on screen, more when the history is longer', () => {
-    expect(windowFor([{ name: 'a', data: [{ x: 0, y: 0 }] }])).toBe(MIN_WINDOW);
-    const hour = 60 * 60 * 1000;
-    expect(windowFor([{ name: 'a', data: [{ x: 0, y: 0 }, { x: hour, y: 0 }] }])).toBe(hour);
-  });
-});
-
-describe('generateEmptyData', () => {
-  it('returns one zero point per second', () => {
-    const data = generateEmptyData(1, 0);
-    expect(data).toHaveLength(61);
-    expect(data.every((p) => p.y === 0)).toBe(true);
-    expect(data[1].x - data[0].x).toBe(1000);
   });
 });
 
@@ -136,6 +85,18 @@ describe('historyToSeries', () => {
     );
     expect(cpu0.map((p) => p.y)).toEqual([10, null, null, 30]);
     expect(cpu0.map((p) => p.x)).toEqual([...cpu0.map((p) => p.x)].sort((a, b) => a - b));
+  });
+
+  it('uses the given gap for averaged (bucketed) histories', () => {
+    const [cpu0] = historyToSeries(
+      [
+        { date: '2026-11-24 10:00:00', cpu0: 10 },
+        { date: '2026-11-24 10:01:00', cpu0: 20 },
+      ],
+      ['cpu0'],
+      150_000,
+    );
+    expect(cpu0.map((p) => p.y)).toEqual([10, 20]);
   });
 
   it('ignores entries without a valid date', () => {

@@ -62,6 +62,17 @@ def cpu_percent_per_core():
         return list(_cpu_measure['usage'])
 
 
+def network_totals():
+    """Bytes received and sent since boot on all interfaces but loopback."""
+    received = sent = 0
+    for nic, counters in psutil.net_io_counters(pernic=True).items():
+        if nic == 'lo' or nic.lower().startswith('loopback'):
+            continue
+        received += counters.bytes_recv
+        sent += counters.bytes_sent
+    return received, sent
+
+
 @functools.lru_cache(maxsize=1)
 def cpu_info():
     """Processor description. It does not change, and takes seconds to read."""

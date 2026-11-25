@@ -7,6 +7,8 @@ import {
   effect,
   inject,
   input,
+  output,
+  signal,
   untracked,
   viewChild,
 } from '@angular/core';
@@ -21,36 +23,32 @@ import {
   Title,
   Tooltip,
 } from 'chart.js';
-import { Subscription, catchError, exhaustMap, interval, map, of } from 'rxjs';
 
-import { DataService } from '../../services/data.service';
-import { formatBytes } from '../indicator/format';
 import { ThemeService } from '../../services/theme.service';
+import { AbsoluteRange } from '../../time-range/time-range';
+import { formatBytes } from '../indicator/format';
 import {
   ChartPoint,
   ChartSeries,
   ChartTheme,
   ChartType,
   DEFAULT_CHART_THEME,
-  UPDATE_TIME,
-  appendPoints,
   applyChartTheme,
   buildChartConfig,
-  windowFor,
-  xBounds,
 } from './charts';
 
 // Only the Chart.js parts used by the dashboard are bundled.
 Chart.register(LineController, LineElement, PointElement, LinearScale, Filler, Legend, Title, Tooltip);
 
-/**
- * Turns the response of the chart endpoint into the new value of each
- * series, in order. `null` or a missing value is drawn as a gap.
- */
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type PullHandler = (data: any) => (number | null | undefined)[];
+export type ChartUnit = 'bytes' | 'bytes/s' | 'percent' | 'number';
 
-/** A live chart that polls `/api/<endPoint>` and appends the values returned by `onPull`. */
+/** Narrowest drag (px) taken as a zoom selection rather than a click. */
+const MIN_SELECTION = 6;
+
+/**
+ * Time series chart. Shows `series` over `range`; dragging over it selects
+ * a new range (`rangeSelected`), double-clicking asks to zoom out.
+ */
 @Component({
   selector: 'app-chart',
   host: {
@@ -59,8 +57,18 @@ export type PullHandler = (data: any) => (number | null | undefined)[];
   },
   // The canvas fallback content describes the chart to assistive technologies.
   template: `
-    <div class="chart">
+    <div
+      class="chart"
+      (pointerdown)="startSelection($event)"
+      (pointermove)="moveSelection($event)"
+      (pointerup)="endSelection($event)"
+      (pointercancel)="selection.set(undefined)"
+      (dblclick)="zoomOut.emit()"
+    >
       <canvas #canvas [attr.aria-label]="title()" role="img">{{ title() }}: {{ seriesNames() }}</canvas>
+      @if (selectionBox(); as box) {
+        <div class="selection" [style.left.px]="box.left" [style.width.px]="box.width"></div>
+      }
     </div>
   `,
   styles: `
@@ -76,31 +84,51 @@ export type PullHandler = (data: any) => (number | null | undefined)[];
       color: var(--mat-sys-on-surface-variant);
       border-top-color: var(--mat-sys-outline-variant);
       outline-color: var(--mat-sys-outline);
+      cursor: crosshair;
+      touch-action: pan-y;
+      user-select: none;
+    }
+    .selection {
+      position: absolute;
+      top: 0;
+      bottom: 0;
+      background: color-mix(in srgb, var(--mat-sys-primary) 18%, transparent);
+      border-inline: 1px solid var(--mat-sys-primary);
+      pointer-events: none;
     }
   `,
 })
 export class ChartComponent {
-  private readonly service = inject(DataService);
   private readonly destroyRef = inject(DestroyRef);
   private readonly theme = inject(ThemeService);
   private readonly canvas = viewChild.required<ElementRef<HTMLCanvasElement>>('canvas');
   private chart?: Chart<'line', ChartPoint[]>;
-  private polling?: Subscription;
 
   readonly series = input.required<ChartSeries[]>();
+  /** Time span of the x axis; defaults to the span of the data. */
+  readonly range = input<AbsoluteRange>();
   readonly title = input('');
   /** Draw the title in the chart (it always names the canvas for assistive technologies). */
   readonly showTitle = input(true);
   readonly type = input<ChartType>('areaspline');
-  readonly endPoint = input.required<string>();
-  /**
-   * Unit of the values: 'bytes' shows "1.5 GB", 'percent' a fixed 0-100 % axis,
-   * on the axis and in tooltips.
-   */
-  readonly unit = input<'bytes' | 'percent' | 'number'>('number');
-  readonly onPull = input.required<PullHandler>();
+  /** Unit of the values, used on the y axis and in tooltips. */
+  readonly unit = input<ChartUnit>('number');
   readonly width = input('50%');
   readonly height = input('300px');
+
+  /** A time span selected by dragging over the chart. */
+  readonly rangeSelected = output<AbsoluteRange>();
+  readonly zoomOut = output<void>();
+
+  protected readonly selection = signal<{ start: number; end: number } | undefined>(undefined);
+  protected readonly selectionBox = computed(() => {
+    const selection = this.selection();
+    if (!selection) {
+      return undefined;
+    }
+    const left = Math.min(selection.start, selection.end);
+    return { left, width: Math.abs(selection.end - selection.start) };
+  });
 
   protected readonly seriesNames = computed(() =>
     this.series()
@@ -109,43 +137,25 @@ export class ChartComponent {
   );
 
   constructor() {
-    // (Re)build the chart once rendered, and whenever its series, title or type change.
+    // (Re)build the chart when its look changes.
     afterRenderEffect(() => {
-      const series = this.series();
       const title = this.showTitle() ? this.title() : '';
       const type = this.type();
       const unit = this.unit();
       const canvas = this.canvas().nativeElement;
       untracked(() => {
-        const config = buildChartConfig(series, title, type, this.readTheme());
-        if (unit === 'percent') {
-          const y = config.options?.scales?.['y'];
-          if (y?.ticks) {
-            y.min = 0;
-            y.max = 100;
-            y.ticks.callback = (value) => `${value} %`;
-          }
-          const tooltip = config.options?.plugins?.tooltip?.callbacks;
-          if (tooltip) {
-            tooltip.label = (item) => `${item.dataset.label}: ${(item.parsed.y ?? 0).toFixed(1)} %`;
-          }
-        }
-        if (unit === 'bytes') {
-          const y = config.options?.scales?.['y'];
-          if (y?.ticks) {
-            // Sizes are never negative, even when every value is zero.
-            y.min = 0;
-            y.ticks.callback = (value) => formatBytes(Number(value));
-          }
-          const tooltip = config.options?.plugins?.tooltip?.callbacks;
-          if (tooltip) {
-            tooltip.label = (item) => `${item.dataset.label}: ${formatBytes(item.parsed.y ?? 0)}`;
-          }
-        }
+        const config = buildChartConfig(this.series(), title, type, this.readTheme());
+        applyUnit(config.options, unit);
         this.chart?.destroy();
         this.chart = new Chart(canvas, config);
-        this.startPolling(windowFor(series));
+        this.update(this.series(), this.range());
       });
+    });
+    // New data or range: update the existing chart in place.
+    effect(() => {
+      const series = this.series();
+      const range = this.range();
+      untracked(() => this.update(series, range));
     });
     // Theme switch: recolour the chart in place, keeping its points.
     effect(() => {
@@ -158,10 +168,65 @@ export class ChartComponent {
         }
       });
     });
-    this.destroyRef.onDestroy(() => {
-      this.polling?.unsubscribe();
-      this.chart?.destroy();
-    });
+    this.destroyRef.onDestroy(() => this.chart?.destroy());
+  }
+
+  protected startSelection(event: PointerEvent): void {
+    if (event.button !== 0 || !this.chart) {
+      return;
+    }
+    const x = this.offsetX(event);
+    this.selection.set({ start: x, end: x });
+    (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
+  }
+
+  protected moveSelection(event: PointerEvent): void {
+    const selection = this.selection();
+    if (selection) {
+      this.selection.set({ ...selection, end: this.offsetX(event) });
+    }
+  }
+
+  protected endSelection(event: PointerEvent): void {
+    const selection = this.selection();
+    this.selection.set(undefined);
+    const scale = this.chart?.scales['x'];
+    if (!selection || !scale || Math.abs(this.offsetX(event) - selection.start) < MIN_SELECTION) {
+      return;
+    }
+    const [a, b] = [selection.start, this.offsetX(event)].map((x) => scale.getValueForPixel(x) ?? NaN);
+    if (Number.isFinite(a) && Number.isFinite(b)) {
+      this.rangeSelected.emit({ from: Math.round(Math.min(a, b)), to: Math.round(Math.max(a, b)) });
+    }
+  }
+
+  /** Pointer x within the chart area (the plot, not the axes). */
+  private offsetX(event: PointerEvent): number {
+    const element = event.currentTarget as HTMLElement;
+    const x = event.clientX - element.getBoundingClientRect().left;
+    const area = this.chart?.chartArea;
+    return area ? Math.min(Math.max(x, area.left), area.right) : x;
+  }
+
+  private update(series: ChartSeries[], range: AbsoluteRange | undefined): void {
+    const chart = this.chart;
+    if (!chart) {
+      return;
+    }
+    const datasets = chart.data.datasets;
+    if (datasets.length !== series.length || datasets.some((set, i) => set.label !== series[i].name)) {
+      // Different series (e.g. the CPU count is now known): rebuild them.
+      const fresh = buildChartConfig(series, '', this.type(), this.readTheme());
+      chart.data.datasets = fresh.data.datasets;
+    } else {
+      datasets.forEach((set, i) => (set.data = series[i].data.map((point) => ({ ...point }))));
+    }
+    const x = chart.options.scales?.['x'];
+    if (x) {
+      x.min = range?.from;
+      x.max = range?.to;
+    }
+    chart.update('none');
   }
 
   /** Resolved theme colours of the chart container (see the styles above). */
@@ -176,34 +241,30 @@ export class ChartComponent {
       axis: color(style?.outlineColor, DEFAULT_CHART_THEME.axis),
     };
   }
+}
 
-  private startPolling(windowMs: number): void {
-    this.polling?.unsubscribe();
-    this.polling = interval(UPDATE_TIME)
-      .pipe(
-        // Skip a tick while the previous request is still pending.
-        exhaustMap(() =>
-          this.service.get(this.endPoint()).pipe(
-            map((data) => ({ ok: true as const, data })),
-            catchError(() => of({ ok: false as const, data: null })),
-          ),
-        ),
-      )
-      .subscribe((result) => {
-        const chart = this.chart;
-        if (!chart) {
-          return;
-        }
-        // Contact lost: draw a gap in every series.
-        const values = result.ok ? this.onPull()(result.data) : [];
-        appendPoints(chart.data.datasets, Date.now(), values, windowMs);
-        const bounds = xBounds(chart.data.datasets);
-        const x = chart.options.scales?.['x'];
-        if (bounds && x) {
-          x.min = bounds.min;
-          x.max = bounds.max;
-        }
-        chart.update('none');
-      });
+type ChartOptions = ReturnType<typeof buildChartConfig>['options'];
+
+/** Y axis ticks and tooltip values in the given unit. */
+function applyUnit(options: ChartOptions, unit: ChartUnit): void {
+  const y = options?.scales?.['y'];
+  const tooltip = options?.plugins?.tooltip?.callbacks;
+  const format =
+    unit === 'percent'
+      ? (value: number) => `${Math.round(value * 10) / 10} %`
+      : unit === 'bytes'
+        ? (value: number) => formatBytes(value)
+        : unit === 'bytes/s'
+          ? (value: number) => `${formatBytes(value)}/s`
+          : undefined;
+  if (!format || !y?.ticks || !tooltip) {
+    return;
   }
+  if (unit === 'percent') {
+    y.max = 100;
+  }
+  // Loads and sizes are never negative, even when every value is zero.
+  y.min = 0;
+  y.ticks.callback = (value) => format(Number(value));
+  tooltip.label = (item) => `${item.dataset.label}: ${format(item.parsed.y ?? 0)}`;
 }

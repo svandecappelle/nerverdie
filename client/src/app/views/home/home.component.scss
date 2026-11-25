@@ -19,11 +19,30 @@
   grid-column: 1 / -1;
 }
 
-.chart-placeholder {
+.title-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.chart-box {
+  position: relative;
+}
+
+.no-data {
+  position: absolute;
+  inset: 12px 0 40px;
   display: grid;
   place-items: center;
-  height: 300px;
   color: var(--mat-sys-on-surface-variant);
+  pointer-events: none;
+}
+
+.charts-error {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--mat-sys-error-container);
+  color: var(--mat-sys-on-error-container);
 }
 
 @media (max-width: 960px) {

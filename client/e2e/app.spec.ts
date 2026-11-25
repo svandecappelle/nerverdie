@@ -71,7 +71,7 @@ test('logging in shows the dashboard with live charts', async ({ page }) => {
     await expect(page.getByRole('img', { name: title })).toBeVisible();
   }
   await expect(page.getByRole('img', { name: 'CPU' })).toContainText('Cpu load 0, Cpu load 1');
-  await expect(page.getByRole('img', { name: 'Network' })).toContainText('Incoming, Outgoing');
+  await expect(page.getByRole('img', { name: 'Network' })).toContainText('Received, Sent');
 
   // Every chart is actually drawn (some non-transparent pixels).
   await expect
@@ -161,4 +161,73 @@ test('the theme follows the system and can be forced to dark or light', async ({
   await expect(page).toHaveURL(/\/$/);
   await expect.poll(background).toBe(dark);
   await expect(page.getByRole('menuitemradio')).toHaveCount(0);
+});
+
+test('the time range picker drives the charts, like Grafana', async ({ page }) => {
+  const historyRequests: URL[] = [];
+  page.on('request', (request) => {
+    const url = new URL(request.url());
+    if (url.pathname === '/api/history/cpu') {
+      historyRequests.push(url);
+    }
+  });
+  const lastSpan = () => {
+    const url = historyRequests.at(-1)!;
+    return Number(url.searchParams.get('to')) - Number(url.searchParams.get('from'));
+  };
+
+  await page.goto('/login');
+  await page.getByLabel('User').fill('admin');
+  await page.getByLabel('Password', { exact: true }).fill('password');
+  await page.getByRole('button', { name: 'Login' }).click();
+  await expect(page).toHaveURL(/\/$/);
+
+  // Default: the last hour.
+  const picker = page.getByRole('button', { name: 'Time range', exact: true });
+  await expect(picker).toHaveText(/Last hour/);
+  await expect.poll(lastSpan).toBe(3600_000);
+
+  // Quick range, kept in the URL.
+  await picker.click();
+  await page.getByRole('dialog', { name: 'Choose a time range' }).getByRole('button', { name: 'Last 6 hours' }).click();
+  await expect(picker).toHaveText(/Last 6 hours/);
+  await expect(page).toHaveURL(/from=now-6h/);
+  await expect.poll(lastSpan).toBe(6 * 3600_000);
+
+  // Zoom out doubles the span.
+  await page.getByRole('button', { name: 'Zoom out time range' }).click();
+  await expect(picker).toHaveText(/Last 12 hours/);
+
+  // Absolute range typed by hand; an invalid one is refused.
+  await picker.click();
+  const dialog = page.getByRole('dialog', { name: 'Choose a time range' });
+  await dialog.getByLabel('From').fill('soon');
+  await dialog.getByRole('button', { name: 'Apply time range' }).click();
+  await expect(dialog.getByRole('alert')).toContainText('Invalid "From"');
+  await dialog.getByLabel('From').fill('2026-11-24 08:00:00');
+  await dialog.getByLabel('To').fill('2026-11-24 10:00:00');
+  await dialog.getByRole('button', { name: 'Apply time range' }).click();
+  await expect(picker).toHaveText(/2026-11-24 08:00:00 to 2026-11-24 10:00:00/);
+  await expect.poll(lastSpan).toBe(2 * 3600_000);
+
+  // Dragging over a chart zooms into the selected span.
+  const canvas = page.getByRole('img', { name: 'CPU' });
+  const box = (await canvas.boundingBox())!;
+  await page.mouse.move(box.x + box.width * 0.4, box.y + box.height / 2);
+  await page.mouse.down();
+  await page.mouse.move(box.x + box.width * 0.6, box.y + box.height / 2, { steps: 5 });
+  await page.mouse.up();
+  await expect(picker).toHaveText(/2026-11-24 08:\d\d:\d\d to 2026-11-24 09:\d\d:\d\d/);
+  await expect.poll(lastSpan).toBeLessThan(2 * 3600_000 * 0.3);
+
+  // The view survives a reload (the range is in the URL).
+  const url = page.url();
+  await page.reload();
+  expect(page.url()).toBe(url);
+  await expect(picker).not.toHaveText(/Last/);
+
+  // Auto-refresh can be turned off.
+  await page.getByRole('button', { name: 'Auto-refresh interval' }).click();
+  await page.getByRole('menuitemradio', { name: 'Off' }).click();
+  await expect(page).not.toHaveURL(/refresh=/);
 });

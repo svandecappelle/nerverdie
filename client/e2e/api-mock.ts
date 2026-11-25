@@ -28,11 +28,36 @@ export const API_FIXTURES: Record<string, unknown> = {
   cpu: { info: { count: 2 }, usage: [12.5, 40] },
   system_info: { hostname: 'test-server' },
   network: { eth0: { incoming: { bytes: '1.50M' }, outgoing: { bytes: '512.00K' } } },
-  'history/cpu/load': [
-    { date: '2026-11-24 10:00:00', cpu0: 10, cpu1: 20 },
-    { date: '2026-11-24 10:00:03', cpu0: 15, cpu1: 25 },
-  ],
 };
+
+/** Local `YYYY-MM-DD HH:MM:SS`, like the server dates. */
+function serverDate(time: number): string {
+  const d = new Date(time);
+  const pad = (n: number) => String(n).padStart(2, '0');
+  return (
+    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ` +
+    `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
+  );
+}
+
+/** Values of each history metric at time t. */
+const HISTORY_VALUES: Record<string, (t: number) => Record<string, number>> = {
+  cpu: (t) => ({ cpu0: 30 + 20 * Math.sin(t / 600_000), cpu1: 50 + 10 * Math.cos(t / 400_000) }),
+  memory: () => ({ used: 4 * GB, swap: 0.5 * GB }),
+  network: (t) => ({ incoming: 200_000 + 100_000 * Math.sin(t / 300_000), outgoing: 50_000 }),
+};
+
+/** `/api/history/<metric>`: about 60 samples over the requested range (default: last hour). */
+export function historyResponse(metric: string, url: URL): unknown {
+  const to = Number(url.searchParams.get('to') ?? Date.now());
+  const from = Number(url.searchParams.get('from') ?? to - 3600_000);
+  const step = Math.max(3, Math.ceil((to - from) / 1000 / 60));
+  const samples = [];
+  for (let t = from; t <= to; t += step * 1000) {
+    samples.push({ date: serverDate(t), ...HISTORY_VALUES[metric](t) });
+  }
+  return { step, from: serverDate(from), to: serverDate(to), samples };
+}
 
 /** Content-Security-Policy sent by the Flask server in production. */
 export const PRODUCTION_CSP = [
@@ -141,6 +166,10 @@ export async function mockApi(page: Page): Promise<void> {
     }
     if (endpoint === 'admin/storage') {
       return route.fulfill({ json: storage });
+    }
+    const history = /^history[/](cpu|memory|network)$/.exec(endpoint);
+    if (history) {
+      return route.fulfill({ json: historyResponse(history[1], url) });
     }
     if (endpoint in API_FIXTURES) {
       return route.fulfill({ json: API_FIXTURES[endpoint] });

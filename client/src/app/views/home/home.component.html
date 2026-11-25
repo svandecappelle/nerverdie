@@ -1,15 +1,18 @@
 <div class="page">
   <header class="page-header">
     <div>
-      <h1>Dashboard</h1>
+      <div class="title-row">
+        <h1>Dashboard</h1>
+        <span class="chip" [class]="health().css" role="status">{{ health().label }}</span>
+      </div>
       <p>
         @if (hostname(); as host) {
           <strong>{{ host }}</strong> ·
         }
-        Live server metrics, refreshed every 3 seconds
+        Server metrics
       </p>
     </div>
-    <span class="chip" [class]="health().css" role="status">{{ health().label }}</span>
+    <app-time-range-picker />
   </header>
 
   <section class="stats" aria-label="Current server status">
@@ -18,25 +21,32 @@
     }
   </section>
 
-  <section class="charts" aria-label="Current server loads">
-    <article class="panel">
-      <h2 class="panel-title">CPU</h2>
-      <p class="panel-subtitle">Load per core</p>
-      @if (cpu(); as cpu) {
-        <app-chart [series]="cpu.series" title="CPU" [showTitle]="false" [onPull]="cpu.onPull" endPoint="cpu" type="spline" unit="percent" width="100%" />
-      } @else {
-        <div class="chart-placeholder">Loading…</div>
-      }
-    </article>
-    <article class="panel">
-      <h2 class="panel-title">Memory</h2>
-      <p class="panel-subtitle">Used memory and swap</p>
-      <app-chart [series]="memory.series" title="Memory" [showTitle]="false" [onPull]="memory.onPull" endPoint="memory" unit="bytes" width="100%" />
-    </article>
-    <article class="panel wide">
-      <h2 class="panel-title">Network</h2>
-      <p class="panel-subtitle">Data received and sent on the first interface</p>
-      <app-chart [series]="network.series" title="Network" [showTitle]="false" [onPull]="network.onPull" endPoint="network" unit="bytes" width="100%" />
-    </article>
+  @if (chartsError()) {
+    <p class="charts-error" role="alert">The history could not be loaded.</p>
+  }
+
+  <section class="charts" aria-label="Server loads over the time range">
+    @for (chart of chartList(); track chart.title) {
+      <article class="panel" [class.wide]="chart.wide">
+        <h2 class="panel-title">{{ chart.title }}</h2>
+        <p class="panel-subtitle">{{ chart.subtitle }}</p>
+        <div class="chart-box">
+          <app-chart
+            [series]="chart.series"
+            [range]="chartsRange()"
+            [title]="chart.title"
+            [showTitle]="false"
+            [type]="chart.type"
+            [unit]="chart.unit"
+            width="100%"
+            (rangeSelected)="zoomTo($event)"
+            (zoomOut)="time.zoomOut()"
+          />
+          @if (chartsRange() && isEmpty(chart.series)) {
+            <div class="no-data">No data in this time range</div>
+          }
+        </div>
+      </article>
+    }
   </section>
 </div>

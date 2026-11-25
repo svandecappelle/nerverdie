@@ -1,15 +1,19 @@
 import { Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core';
-import { interval, startWith } from 'rxjs';
+import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
+import { catchError, forkJoin, interval, map, of, startWith, switchMap, tap } from 'rxjs';
 
-import { ChartComponent, PullHandler } from '../../components/chart/chart.component';
-import { ChartSeries, generateEmptyData, historyToSeries } from '../../components/chart/charts';
-import { formatBytes, humanToBytes } from '../../components/indicator/format';
+import { ChartComponent } from '../../components/chart/chart.component';
+import { ChartSeries, HISTORY_GAP, historyToSeries } from '../../components/chart/charts';
+import { formatBytes } from '../../components/indicator/format';
 import {
   CONTACT_LOST,
   IndicatorComponent,
   IndicatorTile,
 } from '../../components/indicator/indicator.component';
 import { DataService } from '../../services/data.service';
+import { AbsoluteRange, formatAbsolute } from '../../time-range/time-range';
+import { TimeRangePickerComponent } from '../../time-range/time-range-picker.component';
+import { TimeRangeService } from '../../time-range/time-range.service';
 
 /** Delay between two refreshes of the status tiles. */
 const REFRESH_TIME = 3000;
@@ -23,9 +27,41 @@ export interface Tile extends IndicatorTile {
   ratioOf?: (data: any) => number;
 }
 
-export interface LiveChart {
-  series: ChartSeries[];
-  onPull: PullHandler;
+/** `/api/history/<metric>` response. */
+export interface MetricHistory {
+  step: number;
+  samples: Record<string, number | string | null>[];
+}
+
+export interface DashboardCharts {
+  cpu: ChartSeries[];
+  memory: ChartSeries[];
+  network: ChartSeries[];
+}
+
+const EMPTY_CHARTS: DashboardCharts = { cpu: [], memory: [], network: [] };
+
+/** Series of each chart: key in the history entries -> legend. */
+const MEMORY_SERIES = { used: 'Used', swap: 'Swap' };
+const NETWORK_SERIES = { incoming: 'Received', outgoing: 'Sent' };
+
+/** CPU keys found in the samples, in core order (cpu0, cpu1, ..., cpu10). */
+function cpuKeys(samples: MetricHistory['samples']): string[] {
+  const keys = new Set<string>();
+  samples.forEach((sample) => Object.keys(sample).forEach((key) => /^cpu\d+$/.test(key) && keys.add(key)));
+  return [...keys].sort((a, b) => Number(a.slice(3)) - Number(b.slice(3)));
+}
+
+function toSeries(history: MetricHistory, legends: Record<string, string>): ChartSeries[] {
+  const keys = Object.keys(legends);
+  // Buckets are `step` seconds apart: a missing one or more means no data.
+  const gap = Math.max(HISTORY_GAP, 2.5 * history.step * 1000);
+  return historyToSeries(history.samples, keys, gap).map((data, i) => ({ name: legends[keys[i]], data }));
+}
+
+/** Data points requested per chart: about one per horizontal pixel. */
+function pointsWanted(): number {
+  return Math.round(Math.min(Math.max(window.innerWidth, 300), 1500));
 }
 
 const used = (usedBytes: number, totalBytes: number) =>
@@ -72,14 +108,14 @@ const clampRatio = (ratio: number) => (Number.isFinite(ratio) ? Math.min(Math.ma
 
 @Component({
   selector: 'app-home',
-  imports: [IndicatorComponent, ChartComponent],
+  providers: [TimeRangeService],
+  imports: [IndicatorComponent, ChartComponent, TimeRangePickerComponent],
   templateUrl: './home.component.html',
   styleUrl: './home.component.scss',
 })
 export class HomeComponent implements OnInit {
   private readonly service = inject(DataService);
   private readonly destroyRef = inject(DestroyRef);
-  private cpuHistoryPending = false;
 
   readonly tiles = signal<Tile[]>(TILES.map((tile) => ({ ...tile })));
 
@@ -101,27 +137,63 @@ export class HomeComponent implements OnInit {
     return host && host !== CONTACT_LOST ? String(host) : undefined;
   });
 
-  /** Set once the CPU count and history are known. */
-  readonly cpu = signal<LiveChart | undefined>(undefined);
+  protected readonly time = inject(TimeRangeService);
 
-  readonly memory: LiveChart = {
-    onPull: (data) => [data.virtual[3], data.swap[0]],
-    series: [
-      { name: 'Used', data: generateEmptyData() },
-      { name: 'Swap', data: generateEmptyData() },
-    ],
-  };
+  /** Series shown by the charts, for `chartsRange`. */
+  readonly charts = signal<DashboardCharts>(EMPTY_CHARTS);
+  readonly chartsRange = signal<AbsoluteRange | undefined>(undefined);
+  readonly chartsError = signal(false);
 
-  readonly network: LiveChart = {
-    onPull: (data) => {
-      const nic = data[Object.keys(data)[0]];
-      return [humanToBytes(nic.incoming.bytes), humanToBytes(nic.outgoing.bytes)];
-    },
-    series: [
-      { name: 'Incoming', data: generateEmptyData() },
-      { name: 'Outgoing', data: generateEmptyData() },
-    ],
-  };
+  constructor() {
+    // Load the history of every chart for the time range, again on each refresh.
+    toObservable(this.time.resolved)
+      .pipe(
+        switchMap((range) => {
+          const query = `?from=${range.from}&to=${range.to}&points=${pointsWanted()}`;
+          const get = (metric: string) => this.service.get<MetricHistory>(`history/${metric}${query}`);
+          return forkJoin({ cpu: get('cpu'), memory: get('memory'), network: get('network') }).pipe(
+            map((history) => ({ range, history })),
+            catchError(() => of({ range, history: undefined })),
+          );
+        }),
+        tap(({ range, history }) => {
+          this.chartsError.set(!history);
+          if (!history) {
+            return;
+          }
+          const legends = Object.fromEntries(
+            cpuKeys(history.cpu.samples).map((key) => [key, `Cpu load ${key.slice(3)}`]),
+          );
+          this.charts.set({
+            cpu: toSeries(history.cpu, legends),
+            memory: toSeries(history.memory, MEMORY_SERIES),
+            network: toSeries(history.network, NETWORK_SERIES),
+          });
+          this.chartsRange.set(range);
+        }),
+        takeUntilDestroyed(),
+      )
+      .subscribe();
+  }
+
+  readonly chartList = computed(() => {
+    const charts = this.charts();
+    return [
+      { title: 'CPU', subtitle: 'Load per core', series: charts.cpu, type: 'spline' as const, unit: 'percent' as const, wide: false },
+      { title: 'Memory', subtitle: 'Used memory and swap', series: charts.memory, type: 'areaspline' as const, unit: 'bytes' as const, wide: false },
+      { title: 'Network', subtitle: 'Data received and sent, all interfaces', series: charts.network, type: 'areaspline' as const, unit: 'bytes/s' as const, wide: true },
+    ];
+  });
+
+  /** Whether a chart has no point at all in the time range. */
+  isEmpty(series: ChartSeries[]): boolean {
+    return series.every((serie) => serie.data.every((point) => point.y === null));
+  }
+
+  /** Drag over a chart: show that span. */
+  zoomTo(range: AbsoluteRange): void {
+    this.time.setRange({ from: formatAbsolute(range.from), to: formatAbsolute(range.to) });
+  }
 
   ngOnInit(): void {
     const sub = interval(REFRESH_TIME)
@@ -137,9 +209,6 @@ export class HomeComponent implements OnInit {
 
     this.service.get(tile.endPoint).subscribe({
       next: (data) => {
-        if (tile.endPoint === 'cpu') {
-          this.initCpuChart(data.usage.length);
-        }
         this.patchTile(index, {
           value: tile.formatter ? tile.formatter(data) : data,
           ratio: tile.ratioOf ? clampRatio(tile.ratioOf(data)) : undefined,
@@ -154,32 +223,5 @@ export class HomeComponent implements OnInit {
 
   private patchTile(index: number, patch: Partial<Tile>): void {
     this.tiles.update((tiles) => tiles.map((t, i) => (i === index ? { ...t, ...patch } : t)));
-  }
-
-  /** Builds the CPU chart once, seeded with the server-side load history. */
-  private initCpuChart(cpuCount: number): void {
-    if (this.cpu() || this.cpuHistoryPending) {
-      return;
-    }
-    this.cpuHistoryPending = true;
-    this.service.get<Record<string, number | string | null>[]>('history/cpu/load').subscribe({
-      next: (history) => this.setCpuChart(cpuCount, history),
-      // No history yet (empty database): start the chart from scratch.
-      error: () => this.setCpuChart(cpuCount, []),
-    });
-  }
-
-  private setCpuChart(cpuCount: number, history: Record<string, number | string | null>[]): void {
-    const keys = Array.from({ length: cpuCount }, (_, i) => `cpu${i}`);
-    const series: ChartSeries[] = historyToSeries(history, keys).map((data, i) => ({
-      name: `Cpu load ${i}`,
-      data: data.length ? data : generateEmptyData(),
-    }));
-
-    this.cpu.set({
-      series,
-      onPull: (data) => data.usage as number[],
-    });
-    this.cpuHistoryPending = false;
   }
 }

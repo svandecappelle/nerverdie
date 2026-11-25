@@ -15,7 +15,7 @@ import logging
 import os
 
 from server.models.base import db
-from server.models.metrics import Cpu, CpuCore
+from server.models.metrics import Cpu, CpuCore, Measure
 from server.models.setting import Setting
 
 LOGGER = logging.getLogger(__name__)
@@ -68,14 +68,15 @@ def _delete_oldest(count):
     oldest = Cpu.select(Cpu.id).order_by(Cpu.time.asc(), Cpu.id.asc()).limit(count)
     with db.atomic():
         CpuCore.delete().where(CpuCore.cpu.in_(oldest)).execute()
+        Measure.delete().where(Measure.sample.in_(oldest)).execute()
         return Cpu.delete().where(Cpu.id.in_(oldest)).execute()
 
 
 def enforce_limit():
     """Delete the oldest samples while the data is over the limit.
 
-    Returns the number of deleted samples (one sample = one CPU measure
-    with its per-core loads).
+    Returns the number of deleted samples (one sample = one collector run:
+    per-core loads, memory and network).
     """
     limit_mb = get_limit_mb()
     if limit_mb is None:

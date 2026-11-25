@@ -4,7 +4,7 @@
 from playhouse.migrate import SqliteMigrator, migrate
 
 from server.models.base import db
-from server.models.metrics import Cpu, CpuCore
+from server.models.metrics import Cpu, CpuCore, Measure
 from server.models.setting import Setting
 from server.models.user import User
 
@@ -21,8 +21,10 @@ class Datastore():
 
     def __init__(self, args=None):
         db.connect(reuse_if_open=True)
-        db.create_tables([Cpu, CpuCore, User, Setting])
+        db.create_tables([Cpu, CpuCore, Measure, User, Setting])
         _add_missing_user_columns()
+        # Databases created before the time index existed.
+        db.execute_sql('CREATE INDEX IF NOT EXISTS "cpu_time" ON "cpu" ("time")')
 
     def close(self):
         db.close()

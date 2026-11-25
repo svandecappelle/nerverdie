@@ -52,8 +52,19 @@ After 5 failed logins from one address within 5 minutes, further attempts are re
 
 Every response carries security headers (Content-Security-Policy, X-Frame-Options, X-Content-Type-Options, Referrer-Policy), plus Strict-Transport-Security when `NEVERDIE_COOKIE_SECURE=1`. API responses are never cached.
 
+## Dashboard time range
+The dashboard charts the CPU load per core, the memory and the network traffic over a time range picked at the top right, the way Grafana does:
+* the time range button opens quick ranges (*Last 5 minutes* to *Last 30 days*, with a search box) and an absolute range: *From* and *To* take a relative time like `now-6h` or a date like `2026-11-25 10:00:00`. The last absolute ranges used are listed under the form.
+* the arrows move the range backward and forward by half its span, the magnifier zooms out (twice the span).
+* drag over a chart to zoom into the selected span; double-click a chart to zoom out.
+* the refresh button reloads the charts, and the menu next to it sets the auto-refresh interval (*Off* to *5m*).
+
+The range and the refresh interval are kept in the URL (`/?from=now-6h&to=now&refresh=30s`), so a view can be bookmarked or shared.
+
+Long ranges are averaged by the server into about 1200 points per chart. History API (logged-in users): `GET /api/history/<cpu|memory|network>?from=<ms>&to=<ms>&points=<n>`, with `from`/`to` in epoch milliseconds (default: the last hour).
+
 ## Database size limit
-The collector stores a CPU sample every 3 seconds, so the database grows forever by default. To cap it, open the administration screen (*Administration* in the toolbar, `/admin`), turn on *Limit the database size* and enter a limit in MB. The screen also shows the current size, the number of stored samples and their time range.
+The collector stores a sample every 3 seconds (CPU load per core, memory and network traffic), so the database grows forever by default. To cap it, open the administration screen (*Administration* in the toolbar, `/admin`), turn on *Limit the database size* and enter a limit in MB. The screen also shows the current size, the number of stored samples and their time range.
 
 When the data reaches the limit, the oldest samples are deleted until 90 % of the limit is used, then the new samples fill the freed space: the history slides, keeping the most recent data. Users and settings are never deleted. A new limit is applied as soon as it is saved.
 
