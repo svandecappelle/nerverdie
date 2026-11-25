@@ -1,8 +1,33 @@
-.content {
-  padding: 1em;
-  padding-bottom: 4em;
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
 }
 
-mat-grid-tile {
-  transition: background 0.3s;
+.charts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+
+  app-chart {
+    margin-top: 12px;
+  }
+}
+
+.wide {
+  grid-column: 1 / -1;
+}
+
+.chart-placeholder {
+  display: grid;
+  place-items: center;
+  height: 300px;
+  color: var(--mat-sys-on-surface-variant);
+}
+
+@media (max-width: 960px) {
+  .charts {
+    grid-template-columns: minmax(0, 1fr);
+  }
 }

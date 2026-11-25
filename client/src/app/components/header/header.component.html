@@ -1,39 +1,38 @@
 @if (isLoggedIn()) {
-  <mat-toolbar class="mat-elevation-z6 toolbar">
-    <span>Neverdie</span>
-    <span class="sub-title">monitor servers</span>
+  <mat-toolbar class="toolbar">
+    <a class="brand" routerLink="/" aria-label="Neverdie home">
+      <span class="logo" aria-hidden="true"><mat-icon>monitor_heart</mat-icon></span>
+      <span class="name">Neverdie</span>
+    </a>
 
-    <nav>
-      <a mat-icon-button routerLink="/" aria-label="Home">
-        <mat-icon>dashboard</mat-icon>
+    <nav aria-label="Main">
+      <a
+        class="nav-link"
+        routerLink="/"
+        routerLinkActive="active"
+        [routerLinkActiveOptions]="{ exact: true }"
+        ariaCurrentWhenActive="page"
+      >
+        <mat-icon>space_dashboard</mat-icon>
+        <span class="label">Dashboard</span>
       </a>
-      <a mat-icon-button routerLink="/all_nodes" aria-label="All nodes">
-        <mat-icon>view_module</mat-icon>
-      </a>
-      <a mat-icon-button routerLink="/admin" aria-label="Admin panel">
-        <mat-icon>settings</mat-icon>
+      <a class="nav-link" routerLink="/admin" routerLinkActive="active" ariaCurrentWhenActive="page">
+        <mat-icon>tune</mat-icon>
+        <span class="label">Administration</span>
       </a>
     </nav>
 
     <span class="spacer"></span>
 
-    <mat-form-field class="search" subscriptSizing="dynamic">
-      <input matInput aria-label="Search" #searchInput (change)="search(searchInput.value)" />
-      <mat-icon matSuffix>search</mat-icon>
-    </mat-form-field>
-
+    <app-theme-toggle />
     <button mat-icon-button [matMenuTriggerFor]="menu" aria-label="User menu">
-      <mat-icon>more_vert</mat-icon>
+      <mat-icon>account_circle</mat-icon>
     </button>
-    <mat-menu #menu="matMenu">
+    <mat-menu #menu="matMenu" xPosition="before">
       <button mat-menu-item (click)="onLogout()">
-        <mat-icon>exit_to_app</mat-icon>
+        <mat-icon>logout</mat-icon>
         <span>Logout</span>
       </button>
-      <a mat-menu-item routerLink="/profile">
-        <mat-icon>account_circle</mat-icon>
-        <span>Edit profile</span>
-      </a>
     </mat-menu>
   </mat-toolbar>
 }

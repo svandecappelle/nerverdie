@@ -19,7 +19,7 @@ describe('IndicatorComponent', () => {
     const text = await render({ text: 'status', type: 'status', value: ['cpu'], duration: 0.02 });
     expect(text).toContain('status');
     expect(text).toContain('Up');
-    expect(text).toContain('last request duration 0.02secs');
+    expect(text).toContain('Responded in 0.02 s');
   });
 
   it('humanizes an uptime given in milliseconds', async () => {
@@ -37,6 +37,6 @@ describe('IndicatorComponent', () => {
   it('shows the contact lost message', async () => {
     const text = await render({ text: 'cpu', type: 'string', value: CONTACT_LOST });
     expect(text).toContain(CONTACT_LOST);
-    expect(text).not.toContain('last request duration');
+    expect(text).not.toContain('Responded in');
   });
 });

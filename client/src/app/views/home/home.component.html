@@ -1,24 +1,42 @@
-<div class="content">
-  <h2 class="mat-headline-small">Current server status</h2>
+<div class="page">
+  <header class="page-header">
+    <div>
+      <h1>Dashboard</h1>
+      <p>
+        @if (hostname(); as host) {
+          <strong>{{ host }}</strong> ·
+        }
+        Live server metrics, refreshed every 3 seconds
+      </p>
+    </div>
+    <span class="chip" [class]="health().css" role="status">{{ health().label }}</span>
+  </header>
 
-  <mat-grid-list cols="6" rowHeight="100px">
+  <section class="stats" aria-label="Current server status">
     @for (tile of tiles(); track tile.text) {
-      <mat-grid-tile [colspan]="tile.cols" [rowspan]="tile.rows" [style.background]="tile.color">
-        <app-indicator [tile]="tile" />
-      </mat-grid-tile>
+      <app-indicator [tile]="tile" />
     }
-  </mat-grid-list>
+  </section>
 
-  <h2 class="mat-headline-small">Current server loads</h2>
-  @if (cpu(); as cpu) {
-    <app-chart [series]="cpu.series" title="CPU" [onPull]="cpu.onPull" endPoint="cpu" />
-  }
-  <app-chart [series]="memory.series" title="Memory" [onPull]="memory.onPull" endPoint="memory" />
-  <app-chart
-    [series]="network.series"
-    title="Network"
-    [onPull]="network.onPull"
-    endPoint="network"
-    width="100%"
-  />
+  <section class="charts" aria-label="Current server loads">
+    <article class="panel">
+      <h2 class="panel-title">CPU</h2>
+      <p class="panel-subtitle">Load per core (%)</p>
+      @if (cpu(); as cpu) {
+        <app-chart [series]="cpu.series" title="CPU" [showTitle]="false" [onPull]="cpu.onPull" endPoint="cpu" type="spline" width="100%" />
+      } @else {
+        <div class="chart-placeholder">Loading…</div>
+      }
+    </article>
+    <article class="panel">
+      <h2 class="panel-title">Memory</h2>
+      <p class="panel-subtitle">Used memory and swap</p>
+      <app-chart [series]="memory.series" title="Memory" [showTitle]="false" [onPull]="memory.onPull" endPoint="memory" unit="bytes" width="100%" />
+    </article>
+    <article class="panel wide">
+      <h2 class="panel-title">Network</h2>
+      <p class="panel-subtitle">Data received and sent on the first interface</p>
+      <app-chart [series]="network.series" title="Network" [showTitle]="false" [onPull]="network.onPull" endPoint="network" unit="bytes" width="100%" />
+    </article>
+  </section>
 </div>

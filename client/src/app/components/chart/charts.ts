@@ -15,17 +15,31 @@ export interface ChartSeries {
 
 export type ChartType = 'spline' | 'areaspline' | 'area' | 'line';
 
-/** Line colours, one per series (cycled). */
+/** Line colours, one per series (cycled); mid tones readable on light and dark backgrounds. */
 export const SERIES_COLORS = [
-  '#2f7ed8',
-  '#0d233a',
-  '#8bbc21',
-  '#910000',
-  '#1aadce',
-  '#492970',
-  '#f28f43',
-  '#77a1e5',
+  '#3b82f6',
+  '#10b981',
+  '#f59e0b',
+  '#ef4444',
+  '#8b5cf6',
+  '#06b6d4',
+  '#ec4899',
+  '#84cc16',
 ];
+
+/** Text and grid colours of a chart, taken from the page theme. */
+export interface ChartTheme {
+  text: string;
+  grid: string;
+  /** Line of the zero value. */
+  axis: string;
+}
+
+export const DEFAULT_CHART_THEME: ChartTheme = {
+  text: '#5f6368',
+  grid: 'rgba(128, 128, 128, 0.18)',
+  axis: 'rgba(128, 128, 128, 0.6)',
+};
 
 const timeFormat = new Intl.DateTimeFormat(undefined, {
   hour: '2-digit',
@@ -64,7 +78,7 @@ function dataset(serie: ChartSeries, index: number, type: ChartType): ChartDatas
     // Copy: the chart mutates its data when points are appended.
     data: serie.data.map((point) => ({ ...point })),
     borderColor: color,
-    backgroundColor: filled ? withAlpha(color, 0.25) : color,
+    backgroundColor: filled ? withAlpha(color, 0.18) : color,
     borderWidth: 2,
     fill: type === 'area' ? (index === 0 ? 'origin' : '-1') : filled ? 'origin' : false,
     tension: type === 'spline' || type === 'areaspline' ? 0.4 : 0,
@@ -80,6 +94,7 @@ export function buildChartConfig(
   series: ChartSeries[],
   title: string,
   type: ChartType,
+  theme: ChartTheme = DEFAULT_CHART_THEME,
 ): ChartConfiguration<'line', ChartPoint[]> {
   const stacked = type === 'area';
   // Explicit bounds: Chart.js would otherwise round them to "nice" numbers,
@@ -95,22 +110,30 @@ export function buildChartConfig(
       parsing: false,
       normalized: true,
       interaction: { mode: 'nearest', axis: 'x', intersect: false },
+      color: theme.text,
       scales: {
         x: {
           type: 'linear',
           min: bounds?.min,
           max: bounds?.max,
-          ticks: { maxTicksLimit: 8, callback: (value) => formatTime(Number(value)) },
+          border: { display: false },
+          grid: { display: false },
+          ticks: { color: theme.text, maxTicksLimit: 8, callback: (value) => formatTime(Number(value)) },
         },
         y: {
           stacked,
-          title: { display: true, text: 'Value' },
-          grid: { color: (ctx) => (ctx.tick.value === 0 ? '#808080' : 'rgba(0, 0, 0, 0.1)') },
+          border: { display: false },
+          ticks: { color: theme.text, maxTicksLimit: 6 },
+          grid: { color: (ctx) => (ctx.tick.value === 0 ? theme.axis : theme.grid) },
         },
       },
       plugins: {
-        title: { display: !!title, text: title },
-        legend: { display: true, position: 'bottom' },
+        title: { display: !!title, text: title, color: theme.text },
+        legend: {
+          display: true,
+          position: 'bottom',
+          labels: { color: theme.text, usePointStyle: true, pointStyle: 'circle', boxWidth: 8, boxHeight: 8 },
+        },
         tooltip: {
           callbacks: {
             title: (items) => (items.length ? formatDateTime(items[0].parsed.x ?? 0) : ''),
@@ -172,4 +195,28 @@ export function generateEmptyData(minutes = 10, now = Date.now()): ChartPoint[] 
     data.push({ x: now + (i + 3) * 1000, y: 0 });
   }
   return data;
+}
+
+/** Applies new theme colours to an existing chart configuration (theme switch). */
+export function applyChartTheme(options: ChartConfiguration<'line', ChartPoint[]>['options'], theme: ChartTheme): void {
+  if (!options) {
+    return;
+  }
+  options.color = theme.text;
+  const { x, y } = options.scales ?? {};
+  for (const scale of [x, y]) {
+    if (scale?.ticks) {
+      scale.ticks.color = theme.text;
+    }
+  }
+  if (y?.grid) {
+    y.grid.color = (ctx) => (ctx.tick.value === 0 ? theme.axis : theme.grid);
+  }
+  const plugins = options.plugins;
+  if (plugins?.title) {
+    plugins.title.color = theme.text;
+  }
+  if (plugins?.legend?.labels) {
+    plugins.legend.labels.color = theme.text;
+  }
 }

@@ -1,30 +1,41 @@
 @let t = tile();
-<div class="title">{{ t.text }}</div>
+<div class="head">
+  <span class="label">{{ t.text }}</span>
+  <span class="icon" aria-hidden="true"><mat-icon>{{ t.icon ?? 'insights' }}</mat-icon></span>
+</div>
 
 @if (lost()) {
-  <div class="ko">{{ t.value }}</div>
+  <div class="value">{{ t.value }}</div>
+} @else if (state() === 'pending') {
+  <div class="value pending">…</div>
 } @else {
-  <div class="ok">
+  <div class="value">
     @switch (t.type) {
       @case ('date') {
-        <div>{{ t.value | date: 'medium' }}</div>
+        {{ t.value | date: 'medium' }}
       }
       @case ('duration') {
-        <div>{{ humanDuration() }}</div>
+        {{ humanDuration() }}
       }
       @case ('status') {
-        <div>Up</div>
+        Up
       }
       @case ('number') {
-        <div>{{ t.prefix }}{{ t.value | number }}{{ t.suffix }}</div>
+        {{ t.prefix }}{{ t.value | number }}{{ t.suffix }}
       }
       @default {
-        <div>{{ t.value }}</div>
+        {{ t.value }}
       }
     }
-
-    @if (t.duration !== undefined) {
-      <span class="req-time">last request duration {{ t.duration }}secs</span>
-    }
   </div>
+  @if (t.ratio !== undefined) {
+    <div class="meter" role="meter" aria-valuemin="0" aria-valuemax="100" [attr.aria-valuenow]="t.ratio * 100 | number: '1.0-0'" [attr.aria-label]="t.text + ' used'">
+      <span [style.width.%]="t.ratio * 100"></span>
+    </div>
+    <div class="ratio">{{ t.ratio | percent: '1.0-0' }} used</div>
+  }
+}
+
+@if (t.duration !== undefined && !lost()) {
+  <div class="req-time">Responded in {{ t.duration | number: '1.2-2' }} s</div>
 }

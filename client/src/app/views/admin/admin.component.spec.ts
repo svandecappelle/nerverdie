@@ -125,7 +125,7 @@ describe('AdminComponent', () => {
     await create(storageStatus());
     service.compact.mockReturnValue(of(storageStatus({ file_bytes: 5 * MB, free_bytes: 0 })));
 
-    el().querySelector<HTMLButtonElement>('mat-card-actions button')!.click();
+    el().querySelector<HTMLButtonElement>('button.compact')!.click();
     await fixture.whenStable();
 
     expect(service.compact).toHaveBeenCalled();

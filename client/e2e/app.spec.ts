@@ -35,7 +35,7 @@ test('an anonymous visitor is sent to the login page', async ({ page }) => {
 test('bad credentials show an error', async ({ page }) => {
   await page.goto('/login');
   await page.getByLabel('User').fill('admin');
-  await page.getByLabel('Password').fill('wrong');
+  await page.getByLabel('Password', { exact: true }).fill('wrong');
   await page.getByRole('button', { name: 'Login' }).click();
 
   await expect(page.getByRole('alert')).toHaveText('Invalid credentials');
@@ -45,20 +45,24 @@ test('bad credentials show an error', async ({ page }) => {
 test('logging in shows the dashboard with live charts', async ({ page }) => {
   await page.goto('/login');
   await page.getByLabel('User').fill('admin');
-  await page.getByLabel('Password').fill('password');
+  await page.getByLabel('Password', { exact: true }).fill('password');
   await page.getByRole('button', { name: 'Login' }).click();
 
   await expect(page).toHaveURL(/\/$/);
   await expect(page.locator('mat-toolbar')).toContainText('Neverdie');
 
-  // Status tiles
-  const tiles = page.locator('mat-grid-tile');
+  // Status cards
+  const tiles = page.locator('app-indicator');
   await expect(tiles).toHaveCount(6);
   await expect(tiles.filter({ hasText: 'status' })).toContainText('Up');
   await expect(tiles.filter({ hasText: 'uptime' })).toContainText('3 days');
-  await expect(tiles.filter({ hasText: 'memory' })).toContainText('4096Mo / 8192Mo');
+  await expect(tiles.filter({ hasText: 'memory' })).toContainText('4 GB / 8 GB');
+  await expect(tiles.filter({ hasText: 'memory' })).toContainText('50% used');
+  await expect(tiles.filter({ hasText: 'storage' })).toContainText('25% used');
   await expect(tiles.filter({ hasText: 'cpu' })).toContainText('2 cores');
-  await expect(tiles.filter({ hasText: 'system_info' })).toContainText('test-server');
+  await expect(tiles.filter({ hasText: 'host' })).toContainText('test-server');
+  await expect(page.locator('.page-header')).toContainText('test-server');
+  await expect(page.locator('.page-header .chip')).toHaveText('Live');
 
   // CPU, memory and network charts (Chart.js canvases)
   const charts = page.locator('app-chart canvas');
@@ -90,11 +94,11 @@ test('logging in shows the dashboard with live charts', async ({ page }) => {
 test('the admin screen shows the database size and sets its limit', async ({ page }) => {
   await page.goto('/login');
   await page.getByLabel('User').fill('admin');
-  await page.getByLabel('Password').fill('password');
+  await page.getByLabel('Password', { exact: true }).fill('password');
   await page.getByRole('button', { name: 'Login' }).click();
   await expect(page).toHaveURL(/\/$/);
 
-  await page.getByRole('link', { name: 'Admin panel' }).click();
+  await page.getByRole('link', { name: 'Administration' }).click();
   await expect(page).toHaveURL(/\/admin$/);
   const usage = page.getByRole('region', { name: 'Database usage' });
   await expect(usage).toHaveText('48 MB used, no size limit');
@@ -126,4 +130,35 @@ test('the admin screen shows the database size and sets its limit', async ({ pag
   // Reloading keeps the saved limit (the form is filled from the server).
   await page.reload();
   await expect(limit).toHaveValue('40');
+});
+
+test('the theme follows the system and can be forced to dark or light', async ({ page }) => {
+  await page.emulateMedia({ colorScheme: 'light' });
+  await page.goto('/login');
+  const background = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+  const light = await background();
+
+  // System preference
+  await page.emulateMedia({ colorScheme: 'dark' });
+  await expect.poll(background).not.toBe(light);
+  const dark = await background();
+
+  // Forced light, kept after a reload
+  await page.getByRole('button', { name: 'Theme' }).click();
+  await page.getByRole('menuitemradio', { name: 'Light' }).click();
+  await expect.poll(background).toBe(light);
+  await page.reload();
+  await expect.poll(background).toBe(light);
+  expect(await page.evaluate(() => document.documentElement.dataset['theme'])).toBe('light');
+
+  // Forced dark, also once logged in
+  await page.getByRole('button', { name: 'Theme' }).click();
+  await page.getByRole('menuitemradio', { name: 'Dark' }).click();
+  await expect.poll(background).toBe(dark);
+  await page.getByLabel('User').fill('admin');
+  await page.getByLabel('Password', { exact: true }).fill('password');
+  await page.getByRole('button', { name: 'Login' }).click();
+  await expect(page).toHaveURL(/\/$/);
+  await expect.poll(background).toBe(dark);
+  await expect(page.getByRole('menuitemradio')).toHaveCount(0);
 });

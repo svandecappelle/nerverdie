@@ -1,10 +1,9 @@
-import { Component, DestroyRef, OnInit, inject, signal } from '@angular/core';
-import { MatGridListModule } from '@angular/material/grid-list';
+import { Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core';
 import { interval, startWith } from 'rxjs';
 
 import { ChartComponent, PullHandler } from '../../components/chart/chart.component';
 import { ChartSeries, generateEmptyData } from '../../components/chart/charts';
-import { humanToBytes } from '../../components/indicator/format';
+import { formatBytes, humanToBytes } from '../../components/indicator/format';
 import {
   CONTACT_LOST,
   IndicatorComponent,
@@ -17,11 +16,11 @@ const REFRESH_TIME = 3000;
 
 export interface Tile extends IndicatorTile {
   endPoint: string;
-  cols: number;
-  rows: number;
-  color: string;
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   formatter?: (data: any) => string;
+  /** Used share (0..1) shown as a gauge. */
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ratioOf?: (data: any) => number;
 }
 
 export interface LiveChart {
@@ -29,53 +28,51 @@ export interface LiveChart {
   onPull: PullHandler;
 }
 
-const toMegabytes = (bytes: number) => Math.round(bytes / 1024 / 1024);
+const used = (usedBytes: number, totalBytes: number) =>
+  `${formatBytes(usedBytes)} / ${formatBytes(totalBytes)}`;
 
 const TILES: Tile[] = [
-  { text: 'status', endPoint: 'metrics', cols: 1, rows: 1, color: 'lightblue', type: 'status' },
-  { text: 'uptime', endPoint: 'uptime', cols: 1, rows: 1, color: 'lightgreen', type: 'duration' },
+  { text: 'Status', icon: 'monitor_heart', endPoint: 'metrics', type: 'status' },
+  { text: 'Uptime', icon: 'schedule', endPoint: 'uptime', type: 'duration' },
   {
-    text: 'memory',
+    text: 'Memory',
+    icon: 'memory',
     endPoint: 'memory',
-    cols: 1,
-    rows: 1,
-    color: 'lightblue',
     type: 'string',
-    suffix: 'Mo',
-    formatter: (data) => `${toMegabytes(data.virtual[3])}Mo / ${toMegabytes(data.virtual[0])}Mo`,
+    // psutil.virtual_memory(): total, available, percent, used, free
+    formatter: (data) => used(data.virtual[3], data.virtual[0]),
+    ratioOf: (data) => data.virtual[2] / 100,
   },
   {
-    text: 'storage',
+    text: 'Storage',
+    icon: 'save',
     endPoint: 'partitions',
-    cols: 1,
-    rows: 1,
-    color: 'lightblue',
     type: 'string',
-    formatter: (data) => `${toMegabytes(data.usage[1])}Mo / ${toMegabytes(data.usage[0])}Mo`,
+    // psutil.disk_usage('/'): total, used, free, percent
+    formatter: (data) => used(data.usage[1], data.usage[0]),
+    ratioOf: (data) => data.usage[3] / 100,
   },
   {
-    text: 'cpu',
+    text: 'CPU',
+    icon: 'developer_board',
     endPoint: 'cpu',
-    cols: 1,
-    rows: 1,
-    color: 'lightblue',
     type: 'string',
     formatter: (data) => `${data.info.count} cores`,
   },
   {
-    text: 'system_info',
+    text: 'Host',
+    icon: 'dns',
     endPoint: 'system_info',
-    cols: 1,
-    rows: 1,
-    color: 'lightblue',
     type: 'string',
     formatter: (data) => data.hostname,
   },
 ];
 
+const clampRatio = (ratio: number) => (Number.isFinite(ratio) ? Math.min(Math.max(ratio, 0), 1) : undefined);
+
 @Component({
   selector: 'app-home',
-  imports: [MatGridListModule, IndicatorComponent, ChartComponent],
+  imports: [IndicatorComponent, ChartComponent],
   templateUrl: './home.component.html',
   styleUrl: './home.component.scss',
 })
@@ -85,6 +82,24 @@ export class HomeComponent implements OnInit {
   private cpuHistoryPending = false;
 
   readonly tiles = signal<Tile[]>(TILES.map((tile) => ({ ...tile })));
+
+  /** Server reachability, from the last answer of every tile. */
+  readonly health = computed(() => {
+    const answered = this.tiles().filter((tile) => tile.value !== undefined);
+    const lost = answered.filter((tile) => tile.value === CONTACT_LOST).length;
+    if (!answered.length) {
+      return { label: 'Connecting', css: '' };
+    }
+    if (lost === answered.length) {
+      return { label: 'Offline', css: 'ko' };
+    }
+    return lost ? { label: 'Degraded', css: 'ko' } : { label: 'Live', css: 'ok' };
+  });
+
+  readonly hostname = computed(() => {
+    const host = this.tiles().find((tile) => tile.endPoint === 'system_info')?.value;
+    return host && host !== CONTACT_LOST ? String(host) : undefined;
+  });
 
   /** Set once the CPU count and history are known. */
   readonly cpu = signal<LiveChart | undefined>(undefined);
@@ -127,12 +142,12 @@ export class HomeComponent implements OnInit {
         }
         this.patchTile(index, {
           value: tile.formatter ? tile.formatter(data) : data,
-          color: 'lightgreen',
+          ratio: tile.ratioOf ? clampRatio(tile.ratioOf(data)) : undefined,
           duration: seconds(),
         });
       },
       error: () => {
-        this.patchTile(index, { value: CONTACT_LOST, color: 'crimson', duration: seconds() });
+        this.patchTile(index, { value: CONTACT_LOST, ratio: undefined, duration: seconds() });
       },
     });
   }

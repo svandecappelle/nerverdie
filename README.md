@@ -53,7 +53,7 @@ After 5 failed logins from one address within 5 minutes, further attempts are re
 Every response carries security headers (Content-Security-Policy, X-Frame-Options, X-Content-Type-Options, Referrer-Policy), plus Strict-Transport-Security when `NEVERDIE_COOKIE_SECURE=1`. API responses are never cached.
 
 ## Database size limit
-The collector stores a CPU sample every 3 seconds, so the database grows forever by default. To cap it, open the administration screen (gear icon in the toolbar, `/admin`), turn on *Limit the database size* and enter a limit in MB. The screen also shows the current size, the number of stored samples and their time range.
+The collector stores a CPU sample every 3 seconds, so the database grows forever by default. To cap it, open the administration screen (*Administration* in the toolbar, `/admin`), turn on *Limit the database size* and enter a limit in MB. The screen also shows the current size, the number of stored samples and their time range.
 
 When the data reaches the limit, the oldest samples are deleted until 90 % of the limit is used, then the new samples fill the freed space: the history slides, keeping the most recent data. Users and settings are never deleted. A new limit is applied as soon as it is saved.
 
