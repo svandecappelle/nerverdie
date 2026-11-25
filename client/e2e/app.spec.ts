@@ -231,3 +231,65 @@ test('the time range picker drives the charts, like Grafana', async ({ page }) =
   await page.getByRole('menuitemradio', { name: 'Off' }).click();
   await expect(page).not.toHaveURL(/refresh=/);
 });
+
+test('the dashboard can be customized and keeps its layout', async ({ page }) => {
+  const historyCalls: string[] = [];
+  page.on('request', (request) => {
+    const path = new URL(request.url()).pathname;
+    if (path.startsWith('/api/history/')) {
+      historyCalls.push(path.slice('/api/history/'.length));
+    }
+  });
+
+  await page.goto('/login');
+  await page.getByLabel('User').fill('admin');
+  await page.getByLabel('Password', { exact: true }).fill('password');
+  await page.getByRole('button', { name: 'Login' }).click();
+  await expect(page).toHaveURL(/\/$/);
+
+  const chartTitles = page.locator('.charts .panel-title');
+  await expect(chartTitles).toHaveText(['CPU', 'Memory', 'Network']);
+  // Every chart spans the full width by default.
+  const fullWidth = await page.locator('.charts').evaluate((el) => el.clientWidth);
+  const cpuPanel = page.locator('.charts .panel').first();
+  expect(await cpuPanel.evaluate((el) => el.getBoundingClientRect().width)).toBeGreaterThan(fullWidth * 0.95);
+
+  await page.getByRole('button', { name: 'Customize' }).click();
+  const editor = page.getByRole('region', { name: 'Customize dashboard' });
+  await expect(editor).toBeVisible();
+
+  // Hide a tile.
+  await editor.getByRole('checkbox', { name: 'Uptime' }).uncheck();
+  await expect(page.locator('app-indicator')).toHaveCount(5);
+
+  // Hide the CPU chart: its history is no longer requested.
+  await editor.getByRole('list', { name: 'Charts' }).getByRole('checkbox', { name: 'CPU' }).uncheck();
+  await expect(chartTitles).toHaveText(['Memory', 'Network']);
+  historyCalls.length = 0;
+  await page.getByRole('button', { name: 'Refresh', exact: true }).click();
+  await expect.poll(() => historyCalls.length).toBeGreaterThan(0);
+  expect(historyCalls).not.toContain('cpu');
+
+  // Network first, half width, tall.
+  await editor.getByRole('button', { name: 'Move Network up' }).click();
+  await expect(chartTitles).toHaveText(['Network', 'Memory']);
+  await editor.getByRole('radiogroup', { name: 'Network width' }).getByRole('radio', { name: 'Half' }).click();
+  await editor.getByRole('radiogroup', { name: 'Network height' }).getByRole('radio', { name: 'Large' }).click();
+  const network = page.locator('.charts .panel').first();
+  await expect.poll(() => network.evaluate((el) => el.getBoundingClientRect().width)).toBeLessThan(fullWidth * 0.6);
+  await expect.poll(() => network.locator('app-chart').evaluate((el) => el.clientHeight)).toBe(460);
+
+  await editor.getByRole('button', { name: 'Done' }).click();
+  await expect(editor).toBeHidden();
+
+  // The layout survives a reload.
+  await page.reload();
+  await expect(chartTitles).toHaveText(['Network', 'Memory']);
+  await expect(page.locator('app-indicator')).toHaveCount(5);
+
+  // Reset brings the default layout back.
+  await page.getByRole('button', { name: 'Customize' }).click();
+  await editor.getByRole('button', { name: 'Reset' }).click();
+  await expect(chartTitles).toHaveText(['CPU', 'Memory', 'Network']);
+  await expect(page.locator('app-indicator')).toHaveCount(6);
+});

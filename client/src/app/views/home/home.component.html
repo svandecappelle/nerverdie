@@ -1,4 +1,4 @@
-<div class="page">
+<div class="page full-width">
   <header class="page-header">
     <div>
       <div class="title-row">
@@ -12,21 +12,40 @@
         Server metrics
       </p>
     </div>
-    <app-time-range-picker />
+    <div class="header-actions">
+      <app-time-range-picker />
+      <button
+        mat-stroked-button
+        type="button"
+        class="customize"
+        [class.active]="editing()"
+        (click)="editing.set(!editing())"
+        [attr.aria-pressed]="editing()"
+      >
+        <mat-icon>dashboard_customize</mat-icon>
+        Customize
+      </button>
+    </div>
   </header>
 
-  <section class="stats" aria-label="Current server status">
-    @for (tile of tiles(); track tile.text) {
-      <app-indicator [tile]="tile" />
-    }
-  </section>
+  @if (editing()) {
+    <app-dashboard-customizer [tiles]="tileNames" (done)="editing.set(false)" />
+  }
+
+  @if (visibleTiles().length) {
+    <section class="stats" aria-label="Current server status">
+      @for (tile of visibleTiles(); track tile.text) {
+        <app-indicator [tile]="tile" />
+      }
+    </section>
+  }
 
   @if (chartsError()) {
     <p class="charts-error" role="alert">The history could not be loaded.</p>
   }
 
   <section class="charts" aria-label="Server loads over the time range">
-    @for (chart of chartList(); track chart.title) {
+    @for (chart of chartList(); track chart.id) {
       <article class="panel" [class.wide]="chart.wide">
         <h2 class="panel-title">{{ chart.title }}</h2>
         <p class="panel-subtitle">{{ chart.subtitle }}</p>
@@ -39,6 +58,7 @@
             [type]="chart.type"
             [unit]="chart.unit"
             width="100%"
+            [height]="chart.height"
             (rangeSelected)="zoomTo($event)"
             (zoomOut)="time.zoomOut()"
           />
@@ -47,6 +67,11 @@
           }
         </div>
       </article>
+    } @empty {
+      <p class="no-charts">
+        Every chart is hidden.
+        <button mat-button type="button" (click)="editing.set(true)">Customize the dashboard</button>
+      </p>
     }
   </section>
 </div>

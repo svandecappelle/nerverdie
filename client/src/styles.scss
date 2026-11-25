@@ -69,6 +69,11 @@ body {
   max-width: 1440px;
   margin: 0 auto;
   padding: 24px 24px 64px;
+
+  /* Dashboards use the whole screen width. */
+  &.full-width {
+    max-width: none;
+  }
 }
 
 @media (max-width: 600px) {

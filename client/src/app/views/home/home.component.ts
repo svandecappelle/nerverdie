@@ -1,9 +1,11 @@
 import { Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
+import { MatButtonModule } from '@angular/material/button';
+import { MatIconModule } from '@angular/material/icon';
 import { catchError, forkJoin, interval, map, of, startWith, switchMap, tap } from 'rxjs';
 
-import { ChartComponent } from '../../components/chart/chart.component';
-import { ChartSeries, HISTORY_GAP, historyToSeries } from '../../components/chart/charts';
+import { ChartComponent, ChartUnit } from '../../components/chart/chart.component';
+import { ChartSeries, ChartType, HISTORY_GAP, historyToSeries } from '../../components/chart/charts';
 import { formatBytes } from '../../components/indicator/format';
 import {
   CONTACT_LOST,
@@ -14,6 +16,8 @@ import { DataService } from '../../services/data.service';
 import { AbsoluteRange, formatAbsolute } from '../../time-range/time-range';
 import { TimeRangePickerComponent } from '../../time-range/time-range-picker.component';
 import { TimeRangeService } from '../../time-range/time-range.service';
+import { DashboardCustomizerComponent } from './dashboard-customizer.component';
+import { DashboardLayoutService, HEIGHT_PX, PANEL_TITLES, PanelId } from './dashboard-layout.service';
 
 /** Delay between two refreshes of the status tiles. */
 const REFRESH_TIME = 3000;
@@ -33,13 +37,14 @@ export interface MetricHistory {
   samples: Record<string, number | string | null>[];
 }
 
-export interface DashboardCharts {
-  cpu: ChartSeries[];
-  memory: ChartSeries[];
-  network: ChartSeries[];
-}
+export type DashboardCharts = Partial<Record<PanelId, ChartSeries[]>>;
 
-const EMPTY_CHARTS: DashboardCharts = { cpu: [], memory: [], network: [] };
+/** Look of each chart panel. */
+const PANELS: Record<PanelId, { subtitle: string; type: ChartType; unit: ChartUnit }> = {
+  cpu: { subtitle: 'Load per core', type: 'spline', unit: 'percent' },
+  memory: { subtitle: 'Used memory and swap', type: 'areaspline', unit: 'bytes' },
+  network: { subtitle: 'Data received and sent, all interfaces', type: 'areaspline', unit: 'bytes/s' },
+};
 
 /** Series of each chart: key in the history entries -> legend. */
 const MEMORY_SERIES = { used: 'Used', swap: 'Swap' };
@@ -109,7 +114,14 @@ const clampRatio = (ratio: number) => (Number.isFinite(ratio) ? Math.min(Math.ma
 @Component({
   selector: 'app-home',
   providers: [TimeRangeService],
-  imports: [IndicatorComponent, ChartComponent, TimeRangePickerComponent],
+  imports: [
+    IndicatorComponent,
+    ChartComponent,
+    TimeRangePickerComponent,
+    DashboardCustomizerComponent,
+    MatButtonModule,
+    MatIconModule,
+  ],
   templateUrl: './home.component.html',
   styleUrl: './home.component.scss',
 })
@@ -117,7 +129,14 @@ export class HomeComponent implements OnInit {
   private readonly service = inject(DataService);
   private readonly destroyRef = inject(DestroyRef);
 
+  protected readonly layout = inject(DashboardLayoutService);
+
   readonly tiles = signal<Tile[]>(TILES.map((tile) => ({ ...tile })));
+  readonly tileNames = TILES.map((tile) => tile.text);
+  /** Tiles shown; hidden ones are still polled for the health chip. */
+  readonly visibleTiles = computed(() => this.tiles().filter((tile) => this.layout.isTileVisible(tile.text)));
+  /** Whether the customize panel is open. */
+  readonly editing = signal(false);
 
   /** Server reachability, from the last answer of every tile. */
   readonly health = computed(() => {
@@ -140,19 +159,32 @@ export class HomeComponent implements OnInit {
   protected readonly time = inject(TimeRangeService);
 
   /** Series shown by the charts, for `chartsRange`. */
-  readonly charts = signal<DashboardCharts>(EMPTY_CHARTS);
+  readonly charts = signal<DashboardCharts>({});
   readonly chartsRange = signal<AbsoluteRange | undefined>(undefined);
   readonly chartsError = signal(false);
 
+  /** Metrics of the visible charts (a string, so that reordering or resizing does not reload). */
+  private readonly shownMetrics = computed(() =>
+    this.layout
+      .visiblePanels()
+      .map((panel) => panel.id)
+      .sort()
+      .join(','),
+  );
+  private readonly historyRequest = computed(() => ({ range: this.time.resolved(), metrics: this.shownMetrics() }));
+
   constructor() {
-    // Load the history of every chart for the time range, again on each refresh.
-    toObservable(this.time.resolved)
+    // Load the history of the visible charts for the time range, again on each refresh.
+    toObservable(this.historyRequest)
       .pipe(
-        switchMap((range) => {
+        switchMap(({ range, metrics }) => {
           const query = `?from=${range.from}&to=${range.to}&points=${pointsWanted()}`;
-          const get = (metric: string) => this.service.get<MetricHistory>(`history/${metric}${query}`);
-          return forkJoin({ cpu: get('cpu'), memory: get('memory'), network: get('network') }).pipe(
-            map((history) => ({ range, history })),
+          const ids = (metrics ? metrics.split(',') : []) as PanelId[];
+          const requests = Object.fromEntries(
+            ids.map((id) => [id, this.service.get<MetricHistory>(`history/${id}${query}`)]),
+          );
+          return (ids.length ? forkJoin(requests) : of({})).pipe(
+            map((history) => ({ range, history: history as Partial<Record<PanelId, MetricHistory>> })),
             catchError(() => of({ range, history: undefined })),
           );
         }),
@@ -161,14 +193,20 @@ export class HomeComponent implements OnInit {
           if (!history) {
             return;
           }
-          const legends = Object.fromEntries(
-            cpuKeys(history.cpu.samples).map((key) => [key, `Cpu load ${key.slice(3)}`]),
-          );
-          this.charts.set({
-            cpu: toSeries(history.cpu, legends),
-            memory: toSeries(history.memory, MEMORY_SERIES),
-            network: toSeries(history.network, NETWORK_SERIES),
-          });
+          const charts: DashboardCharts = {};
+          if (history.cpu) {
+            const legends = Object.fromEntries(
+              cpuKeys(history.cpu.samples).map((key) => [key, `Cpu load ${key.slice(3)}`]),
+            );
+            charts.cpu = toSeries(history.cpu, legends);
+          }
+          if (history.memory) {
+            charts.memory = toSeries(history.memory, MEMORY_SERIES);
+          }
+          if (history.network) {
+            charts.network = toSeries(history.network, NETWORK_SERIES);
+          }
+          this.charts.set(charts);
           this.chartsRange.set(range);
         }),
         takeUntilDestroyed(),
@@ -176,13 +214,17 @@ export class HomeComponent implements OnInit {
       .subscribe();
   }
 
+  /** Visible charts, in the chosen order and size. */
   readonly chartList = computed(() => {
     const charts = this.charts();
-    return [
-      { title: 'CPU', subtitle: 'Load per core', series: charts.cpu, type: 'spline' as const, unit: 'percent' as const, wide: false },
-      { title: 'Memory', subtitle: 'Used memory and swap', series: charts.memory, type: 'areaspline' as const, unit: 'bytes' as const, wide: false },
-      { title: 'Network', subtitle: 'Data received and sent, all interfaces', series: charts.network, type: 'areaspline' as const, unit: 'bytes/s' as const, wide: true },
-    ];
+    return this.layout.visiblePanels().map((panel) => ({
+      ...PANELS[panel.id],
+      id: panel.id,
+      title: PANEL_TITLES[panel.id],
+      series: charts[panel.id] ?? [],
+      wide: panel.width === 'full',
+      height: HEIGHT_PX[panel.height],
+    }));
   });
 
   /** Whether a chart has no point at all in the time range. */

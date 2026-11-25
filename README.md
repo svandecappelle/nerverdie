@@ -61,6 +61,8 @@ The dashboard charts the CPU load per core, the memory and the network traffic o
 
 The range and the refresh interval are kept in the URL (`/?from=now-6h&to=now&refresh=30s`), so a view can be bookmarked or shared.
 
+*Customize* (next to the time range) opens the dashboard editor: show or hide each status tile and chart, reorder the charts (drag the rows or use the arrows), and set each chart to half or full width and to a small, medium or large height. The layout is saved in the browser; *Reset* brings the default one back (every chart at full width). Hidden charts are not loaded.
+
 Long ranges are averaged by the server into about 1200 points per chart. History API (logged-in users): `GET /api/history/<cpu|memory|network>?from=<ms>&to=<ms>&points=<n>`, with `from`/`to` in epoch milliseconds (default: the last hour).
 
 ## Database size limit
