@@ -1,91 +1,40 @@
 # -*- coding: utf-8 -*-
+"""Stored metrics history, used to seed the dashboard charts."""
 
 from datetime import datetime, timedelta
 
 from server.models.metrics import Cpu, CpuCore
 
-
-def modularRange(start, end, step, mod):
-    return (i % mod for i in range(start, end + 1 + (0 if end >= start else mod), step))
-
-
-def add_delta(date, seconds):
-    return date + timedelta(seconds=seconds)
+DATE_FORMAT = '%Y-%m-%d %H:%M:%S'
+DEFAULT_SPAN = timedelta(hours=1)
 
 
-def arrays_of_times(start, end, step):
-    diff = end - start
-    startSec = (start.hour * 60 + start.minute) * 60 + start.second  # Convert to seconds
-    endSec = startSec + (diff.days * 24 * 3600) + diff.seconds
-    return [add_delta(start, secs - startSec) for secs in modularRange(startSec, endSec, step, 24 * 60 * 60 * 365)]
-
-
-# start = datetime.now()
-# end = start + timedelta(hours=1)
-# end_in_ten_days = datetime.now() + timedelta(days=4)
-
-# each_six_seconds = arrays_of_times(start, end, 6)
-# print(each_six_seconds)
-# print(len(each_six_seconds))
-
-# each_ten_minutes = arrays_of_times(start, end, 10 * 60)
-# print(each_ten_minutes)
-# print(len(each_ten_minutes))
-
-# each_two_days = arrays_of_times(start, end_in_ten_days, 2 * 60 * 60 * 24)
-# print(each_two_days)
-# print(len(each_two_days))
-
-def map_dates(empty_filled, database_saved):
-    def search(x):
-        gen = (item for item in database_saved if item['date'] == x.strftime('%Y-%m-%d %H:%M:%S'))
-
-        for item in gen:
-            return item
-        return {
-            'date': x.strftime('%Y-%m-%d %H:%M:%S'),
-            'cpu1': None,
-            'cpu2': None,
-            'cpu3': None,
-            'cpu4': None
-        }
-    return list(map(search, empty_filled))
+def _format_date(value):
+    """Stored dates are datetimes or 'YYYY-MM-DD HH:MM:SS[.ffffff]' strings."""
+    if isinstance(value, datetime):
+        return value.strftime(DATE_FORMAT)
+    return str(value)[:19]
 
 
 class History:
-    def get(self, metric, tail=int(3600/3)):
-        now = datetime.now()
+    def get(self, metric='cpu', span=DEFAULT_SPAN):
+        """CPU load samples of the last `span`, oldest first.
 
-        empty_datas = arrays_of_times(now - timedelta(hours=1), now, 3)
-
-        cpucores = CpuCore.select(
-            CpuCore, Cpu
-            ).join(Cpu).where(
-                Cpu.time > empty_datas[0]
-            ).order_by(
-                Cpu.time.asc(), CpuCore.name.asc()
-            )
+        One entry per sample: {'date': 'YYYY-MM-DD HH:MM:SS', 'cpu0': load, ...}.
+        An empty list when nothing was stored in that period.
+        """
+        start = datetime.now() - span
+        cores = (CpuCore
+                 .select(CpuCore, Cpu)
+                 .join(Cpu)
+                 .where(Cpu.time > start.strftime(DATE_FORMAT))
+                 .order_by(Cpu.time.asc(), Cpu.id.asc(), CpuCore.id.asc()))
         history = []
-        metric_entry = None
-        for cpucore_metric in cpucores:
-            if metric_entry and metric_entry['date'] == str(cpucore_metric.cpu.time):
-                metric_entry[cpucore_metric.name] = float(cpucore_metric.load)
-            elif metric_entry and metric_entry['date'] != str(cpucore_metric.cpu.time):
-                metric_entry[cpucore_metric.name] = float(cpucore_metric.load)
-                history.append(metric_entry)
-                metric_entry = None
-            else:
-                metric_entry = {
-                    'date': str(cpucore_metric.cpu.time),
-                    cpucore_metric.name: float(cpucore_metric.load)
-                }
-        # An empty history (fresh database) must not raise IndexError.
-        if not history or history[0]['date'] != empty_datas[0].strftime('%Y-%m-%d %H:%M:%S'):
-            history.append({
-                'date': empty_datas[0].strftime('%Y-%m-%d %H:%M:%S'),
-                'cpu1': None,
-                'cpu2': None,
-                'cpu3': None,
-                'cpu4': None
-            })
+        entries = {}
+        for core in cores:
+            entry = entries.get(core.cpu.id)
+            if entry is None:
+                entry = entries[core.cpu.id] = {'date': _format_date(core.cpu.time)}
+                history.append(entry)
+            entry[core.name] = float(core.load)
         return history

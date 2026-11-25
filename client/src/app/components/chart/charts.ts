@@ -220,3 +220,32 @@ export function applyChartTheme(options: ChartConfiguration<'line', ChartPoint[]
     plugins.legend.labels.color = theme.text;
   }
 }
+
+/** Samples further apart than this are not linked: the server was not collecting. */
+export const HISTORY_GAP = 10 * 1000;
+
+/**
+ * Turns the stored history (`[{ date: 'YYYY-MM-DD HH:MM:SS', cpu0: 12.5, ... }]`,
+ * server local time) into one series per key, sorted by time, with a gap where
+ * the collection stopped.
+ */
+export function historyToSeries(
+  history: Record<string, number | string | null>[],
+  keys: string[],
+): ChartPoint[][] {
+  const samples = history
+    .map((entry) => ({ x: new Date(String(entry['date']).replace(' ', 'T')).getTime(), entry }))
+    .filter((sample) => Number.isFinite(sample.x))
+    .sort((a, b) => a.x - b.x);
+  return keys.map((key) => {
+    const points: ChartPoint[] = [];
+    samples.forEach(({ x, entry }, index) => {
+      if (index > 0 && x - samples[index - 1].x > HISTORY_GAP) {
+        points.push({ x: samples[index - 1].x + 1, y: null });
+      }
+      const value = entry[key];
+      points.push({ x, y: typeof value === 'number' ? value : null });
+    });
+    return points;
+  });
+}

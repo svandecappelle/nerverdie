@@ -8,7 +8,9 @@ import platform
 import socket
 import sys
 import subprocess
+import functools
 import re
+import threading
 
 import cpuinfo
 import psutil
@@ -20,6 +22,51 @@ af_map = {
     socket.AF_INET6: 'IPv6',
     psutil.AF_LINK: 'MAC',
 }
+
+# The CPU load is computed from psutil.cpu_times() deltas kept here, shared by
+# every thread. psutil.cpu_percent() is not usable in the web server: its
+# reference is kept per thread (psutil 7), and the waitress pool serves each
+# request on any of its threads, so it mostly returned 0 %. The measure is also
+# shared by close calls (the dashboard CPU tile and chart poll together), and
+# renewed at most every CPU_MIN_INTERVAL seconds.
+CPU_MIN_INTERVAL = 1.0
+_cpu_lock = threading.Lock()
+_cpu_measure = {'time': None, 'times': None, 'usage': None}
+
+
+def _busy_percent(before, after):
+    """Busy share of one core between two psutil.cpu_times() samples, in %."""
+    idle = lambda times: times.idle + getattr(times, 'iowait', 0)  # noqa: E731
+    total = sum(after) - sum(before)
+    if total <= 0:
+        return 0.0
+    busy = total - (idle(after) - idle(before))
+    return round(min(max(100.0 * busy / total, 0.0), 100.0), 1)
+
+
+def cpu_percent_per_core():
+    """Load of each core in %, over at least CPU_MIN_INTERVAL seconds."""
+    with _cpu_lock:
+        now = time.monotonic()
+        if _cpu_measure['times'] is None:
+            # The very first call has no reference: measure over a short interval.
+            _cpu_measure['times'] = psutil.cpu_times(percpu=True)
+            time.sleep(0.1)
+        elif _cpu_measure['usage'] is not None and now - _cpu_measure['time'] < CPU_MIN_INTERVAL:
+            return list(_cpu_measure['usage'])
+        times = psutil.cpu_times(percpu=True)
+        _cpu_measure['usage'] = [_busy_percent(before, after)
+                                 for before, after in zip(_cpu_measure['times'], times, strict=False)]
+        _cpu_measure['times'] = times
+        _cpu_measure['time'] = time.monotonic()
+        return list(_cpu_measure['usage'])
+
+
+@functools.lru_cache(maxsize=1)
+def cpu_info():
+    """Processor description. It does not change, and takes seconds to read."""
+    return cpuinfo.get_cpu_info()
+
 
 duplex_map = {
     psutil.NIC_DUPLEX_FULL: "full",
@@ -80,14 +127,14 @@ class Metric(object):
             })
         usage = None
         if opts['format'] == Format.PERCENT:
-            usage = psutil.cpu_percent(percpu=True)
+            usage = cpu_percent_per_core()
         else:
             usage = psutil.cpu_times(percpu=True)
 
         if opts.get('mode') == 'simple':
             info = get_processor_name()
         else:
-            info = cpuinfo.get_cpu_info()
+            info = cpu_info()
 
         return {
             'info': info,
@@ -107,7 +154,7 @@ class Metric(object):
             })
         usage = None
         if opts['format'] == Format.PERCENT:
-            usage = psutil.cpu_percent(percpu=True)
+            usage = cpu_percent_per_core()
         else:
             usage = psutil.cpu_times(percpu=True)
 

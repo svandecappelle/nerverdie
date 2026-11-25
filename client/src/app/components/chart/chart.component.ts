@@ -93,8 +93,11 @@ export class ChartComponent {
   readonly showTitle = input(true);
   readonly type = input<ChartType>('areaspline');
   readonly endPoint = input.required<string>();
-  /** Unit of the values: 'bytes' shows "1.5 GB" on the axis and in tooltips. */
-  readonly unit = input<'bytes' | 'number'>('number');
+  /**
+   * Unit of the values: 'bytes' shows "1.5 GB", 'percent' a fixed 0-100 % axis,
+   * on the axis and in tooltips.
+   */
+  readonly unit = input<'bytes' | 'percent' | 'number'>('number');
   readonly onPull = input.required<PullHandler>();
   readonly width = input('50%');
   readonly height = input('300px');
@@ -115,6 +118,18 @@ export class ChartComponent {
       const canvas = this.canvas().nativeElement;
       untracked(() => {
         const config = buildChartConfig(series, title, type, this.readTheme());
+        if (unit === 'percent') {
+          const y = config.options?.scales?.['y'];
+          if (y?.ticks) {
+            y.min = 0;
+            y.max = 100;
+            y.ticks.callback = (value) => `${value} %`;
+          }
+          const tooltip = config.options?.plugins?.tooltip?.callbacks;
+          if (tooltip) {
+            tooltip.label = (item) => `${item.dataset.label}: ${(item.parsed.y ?? 0).toFixed(1)} %`;
+          }
+        }
         if (unit === 'bytes') {
           const y = config.options?.scales?.['y'];
           if (y?.ticks) {

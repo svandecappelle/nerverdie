@@ -21,9 +21,9 @@
   <section class="charts" aria-label="Current server loads">
     <article class="panel">
       <h2 class="panel-title">CPU</h2>
-      <p class="panel-subtitle">Load per core (%)</p>
+      <p class="panel-subtitle">Load per core</p>
       @if (cpu(); as cpu) {
-        <app-chart [series]="cpu.series" title="CPU" [showTitle]="false" [onPull]="cpu.onPull" endPoint="cpu" type="spline" width="100%" />
+        <app-chart [series]="cpu.series" title="CPU" [showTitle]="false" [onPull]="cpu.onPull" endPoint="cpu" type="spline" unit="percent" width="100%" />
       } @else {
         <div class="chart-placeholder">Loading…</div>
       }

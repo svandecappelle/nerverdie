@@ -3,6 +3,7 @@ import {
   appendPoints,
   buildChartConfig,
   generateEmptyData,
+  historyToSeries,
   windowFor,
   xBounds,
 } from './charts';
@@ -104,5 +105,40 @@ describe('generateEmptyData', () => {
     expect(data).toHaveLength(61);
     expect(data.every((p) => p.y === 0)).toBe(true);
     expect(data[1].x - data[0].x).toBe(1000);
+  });
+});
+
+describe('historyToSeries', () => {
+  const at = (time: string) => new Date(`2026-11-24T${time}`).getTime();
+
+  it('builds one sorted series per core', () => {
+    const series = historyToSeries(
+      [
+        { date: '2026-11-24 10:00:03', cpu0: 30, cpu1: 40 },
+        { date: '2026-11-24 10:00:00', cpu0: 10, cpu1: 20 },
+      ],
+      ['cpu0', 'cpu1'],
+    );
+    expect(series).toEqual([
+      [{ x: at('10:00:00'), y: 10 }, { x: at('10:00:03'), y: 30 }],
+      [{ x: at('10:00:00'), y: 20 }, { x: at('10:00:03'), y: 40 }],
+    ]);
+  });
+
+  it('draws a gap where the collection stopped, and for missing values', () => {
+    const [cpu0] = historyToSeries(
+      [
+        { date: '2026-11-24 10:00:00', cpu0: 10 },
+        { date: '2026-11-24 10:05:00', cpu0: null },
+        { date: '2026-11-24 10:05:03', cpu0: 30 },
+      ],
+      ['cpu0'],
+    );
+    expect(cpu0.map((p) => p.y)).toEqual([10, null, null, 30]);
+    expect(cpu0.map((p) => p.x)).toEqual([...cpu0.map((p) => p.x)].sort((a, b) => a - b));
+  });
+
+  it('ignores entries without a valid date', () => {
+    expect(historyToSeries([{ date: 'nope', cpu0: 1 }], ['cpu0'])).toEqual([[]]);
   });
 });

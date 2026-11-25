@@ -2,7 +2,7 @@ import { Component, DestroyRef, OnInit, computed, inject, signal } from '@angula
 import { interval, startWith } from 'rxjs';
 
 import { ChartComponent, PullHandler } from '../../components/chart/chart.component';
-import { ChartSeries, generateEmptyData } from '../../components/chart/charts';
+import { ChartSeries, generateEmptyData, historyToSeries } from '../../components/chart/charts';
 import { formatBytes, humanToBytes } from '../../components/indicator/format';
 import {
   CONTACT_LOST,
@@ -162,22 +162,19 @@ export class HomeComponent implements OnInit {
       return;
     }
     this.cpuHistoryPending = true;
-    this.service.get<Record<string, number | string>[]>('history/cpu/load').subscribe({
+    this.service.get<Record<string, number | string | null>[]>('history/cpu/load').subscribe({
       next: (history) => this.setCpuChart(cpuCount, history),
       // No history yet (empty database): start the chart from scratch.
       error: () => this.setCpuChart(cpuCount, []),
     });
   }
 
-  private setCpuChart(cpuCount: number, history: Record<string, number | string>[]): void {
-    const series: ChartSeries[] = Array.from({ length: cpuCount }, (_, i) => {
-      const data = history.map((entry) => ({
-        // "YYYY-MM-DD HH:MM:SS", server local time.
-        x: new Date(String(entry['date']).replace(' ', 'T')).getTime(),
-        y: (entry[`cpu${i}`] as number | undefined) ?? null,
-      }));
-      return { name: `Cpu load ${i}`, data: data.length ? data : generateEmptyData() };
-    });
+  private setCpuChart(cpuCount: number, history: Record<string, number | string | null>[]): void {
+    const keys = Array.from({ length: cpuCount }, (_, i) => `cpu${i}`);
+    const series: ChartSeries[] = historyToSeries(history, keys).map((data, i) => ({
+      name: `Cpu load ${i}`,
+      data: data.length ? data : generateEmptyData(),
+    }));
 
     this.cpu.set({
       series,
