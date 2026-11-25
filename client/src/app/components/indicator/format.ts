@@ -39,3 +39,16 @@ export function humanToBytes(value: string | number): number {
   const exponent = BYTE_UNITS.indexOf((match[2] ?? 'B').toUpperCase()) + 1;
   return amount * Math.pow(1024, exponent);
 }
+
+/** Human readable size in binary units ("1.5 MB", "512 B"). */
+export function formatBytes(bytes: number, locale = 'en'): string {
+  const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+  let value = bytes;
+  let unit = 0;
+  while (Math.abs(value) >= 1024 && unit < units.length - 1) {
+    value /= 1024;
+    unit++;
+  }
+  const digits = unit === 0 || value >= 100 ? 0 : 1;
+  return `${new Intl.NumberFormat(locale, { maximumFractionDigits: digits }).format(value)} ${units[unit]}`;
+}

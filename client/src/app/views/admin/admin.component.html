@@ -1,0 +1,89 @@
+<div class="content">
+  <h2 class="mat-headline-small">Administration</h2>
+
+  <mat-card class="storage" appearance="outlined">
+    <mat-card-header>
+      <mat-icon mat-card-avatar>storage</mat-icon>
+      <mat-card-title>Database storage</mat-card-title>
+      <mat-card-subtitle>
+        When the limit is reached, the oldest samples are deleted to make room for the new ones.
+      </mat-card-subtitle>
+    </mat-card-header>
+
+    <mat-card-content>
+      @if (status(); as status) {
+        <section class="usage" aria-label="Database usage">
+          <p class="usage-text">
+            <strong>{{ formatBytes(status.used_bytes) }}</strong>
+            @if (status.limit_bytes) {
+              used of {{ formatBytes(status.limit_bytes) }} ({{ usage() | percent: '1.0-0' }})
+            } @else {
+              used, no size limit
+            }
+          </p>
+          @if (usage() !== undefined) {
+            <mat-progress-bar
+              mode="determinate"
+              [value]="usage()! * 100"
+              aria-label="Share of the size limit in use"
+            />
+          }
+        </section>
+
+        <dl class="facts">
+          <div>
+            <dt>File on disk</dt>
+            <dd>{{ formatBytes(status.file_bytes) }}</dd>
+          </div>
+          <div>
+            <dt>Reclaimable by compacting</dt>
+            <dd>{{ formatBytes(status.free_bytes) }}</dd>
+          </div>
+          <div>
+            <dt>Stored samples</dt>
+            <dd>{{ status.samples | number }}</dd>
+          </div>
+          <div>
+            <dt>Oldest sample</dt>
+            <dd>{{ status.oldest ? (status.oldest | date: 'medium') : '—' }}</dd>
+          </div>
+          <div>
+            <dt>Newest sample</dt>
+            <dd>{{ status.newest ? (status.newest | date: 'medium') : '—' }}</dd>
+          </div>
+        </dl>
+      } @else if (!error()) {
+        <mat-progress-bar mode="indeterminate" aria-label="Loading the storage status" />
+      }
+
+      <form class="limit" [formGroup]="form" (ngSubmit)="save()">
+        <mat-slide-toggle formControlName="limited">Limit the database size</mat-slide-toggle>
+        <mat-form-field subscriptSizing="dynamic">
+          <mat-label>Size limit</mat-label>
+          <input matInput type="number" formControlName="limitMb" min="1" step="1" />
+          <span matTextSuffix>MB</span>
+          @if (form.controls.limitMb.hasError('max')) {
+            <mat-error>At most {{ status()?.max_limit_mb | number }} MB</mat-error>
+          } @else {
+            <mat-error>A whole number of MB, at least {{ status()?.min_limit_mb ?? 1 }}</mat-error>
+          }
+        </mat-form-field>
+        <button mat-flat-button type="submit" [disabled]="busy()">Save</button>
+      </form>
+
+      @if (message()) {
+        <p class="message" role="status">{{ message() }}</p>
+      }
+      @if (error()) {
+        <p class="error" role="alert">{{ error() }}</p>
+      }
+    </mat-card-content>
+
+    <mat-card-actions align="end">
+      <button mat-stroked-button type="button" (click)="compact()" [disabled]="busy()">
+        <mat-icon>compress</mat-icon>
+        Compact
+      </button>
+    </mat-card-actions>
+  </mat-card>
+</div>

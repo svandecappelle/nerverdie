@@ -9,6 +9,7 @@ import time
 
 from server.console import metric
 from server.models.metrics import Cpu, CpuCore
+from server.storage import retention
 
 
 class Daemon():
@@ -26,6 +27,10 @@ class Daemon():
         for (key, value) in cpus_load.items():
             cpucore = CpuCore(cpu=cpu, load=value, name=key)
             cpucore.save()
+        # Slide the data: drop the oldest samples when the size limit is reached.
+        deleted = retention.enforce_limit()
+        if deleted:
+            print("Database size limit reached: deleted %d old samples" % deleted)
         print("-"*32)
 
     def check(self):

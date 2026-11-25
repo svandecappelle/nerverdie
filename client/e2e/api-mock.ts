@@ -1,6 +1,21 @@
 import { Page } from '@playwright/test';
 
+const MB = 1024 ** 2;
 const GB = 1024 ** 3;
+
+/** `/api/admin/storage` before any change (unlimited database). */
+export const STORAGE_STATUS = {
+  limit_mb: null as number | null,
+  limit_bytes: null as number | null,
+  used_bytes: 48 * MB,
+  file_bytes: 52 * MB,
+  free_bytes: 4 * MB,
+  samples: 86_400,
+  oldest: '2026-11-22 10:00:00',
+  newest: '2026-11-25 10:00:00',
+  min_limit_mb: 1,
+  max_limit_mb: 1_048_576,
+};
 
 /** Payloads shaped like the Flask API responses (server/web/api). */
 export const API_FIXTURES: Record<string, unknown> = {
@@ -70,6 +85,7 @@ export function cspViolations(page: Page): Promise<string[]> {
  */
 export async function mockApi(page: Page): Promise<void> {
   let loggedIn = false;
+  let storage = { ...STORAGE_STATUS };
   const unauthorized = { status: 401, json: { error: 'unauthorized' } };
 
   await page.route('**/api/**', async (route) => {
@@ -101,6 +117,30 @@ export async function mockApi(page: Page): Promise<void> {
       return route.fulfill({
         json: { token: 'token', duration: 600, user: { uid: 'uid' }, connected: true },
       });
+    }
+    if (endpoint === 'admin/storage' && route.request().method() === 'PUT') {
+      const { limit_mb } = route.request().postDataJSON() ?? {};
+      const limit = limit_mb ? limit_mb * MB : null;
+      // Like the server: over the limit, the oldest samples go until 90% of it is used.
+      const over = limit !== null && storage.used_bytes > limit;
+      const used = over ? Math.round(limit * 0.9) : storage.used_bytes;
+      const deleted = over ? Math.round(storage.samples * (1 - used / storage.used_bytes)) : 0;
+      storage = {
+        ...storage,
+        limit_mb: limit_mb || null,
+        limit_bytes: limit,
+        used_bytes: used,
+        free_bytes: storage.free_bytes + storage.used_bytes - used,
+        samples: storage.samples - deleted,
+      };
+      return route.fulfill({ json: { ...storage, deleted } });
+    }
+    if (endpoint === 'admin/storage/compact') {
+      storage = { ...storage, file_bytes: storage.used_bytes, free_bytes: 0 };
+      return route.fulfill({ json: storage });
+    }
+    if (endpoint === 'admin/storage') {
+      return route.fulfill({ json: storage });
     }
     if (endpoint in API_FIXTURES) {
       return route.fulfill({ json: API_FIXTURES[endpoint] });

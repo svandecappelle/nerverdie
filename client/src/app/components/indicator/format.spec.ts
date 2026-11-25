@@ -1,4 +1,4 @@
-import { humanToBytes, humanizeDuration } from './format';
+import { formatBytes, humanToBytes, humanizeDuration } from './format';
 
 describe('humanizeDuration', () => {
   it('uses the largest sensible unit', () => {
@@ -25,5 +25,14 @@ describe('humanToBytes', () => {
   it('passes numbers through and rejects garbage', () => {
     expect(humanToBytes(42)).toBe(42);
     expect(humanToBytes('n/a')).toBeNaN();
+  });
+});
+
+describe('formatBytes', () => {
+  it('uses binary units with one decimal under 100', () => {
+    expect(formatBytes(512)).toBe('512 B');
+    expect(formatBytes(1536)).toBe('1.5 KB');
+    expect(formatBytes(100 * 1024 * 1024)).toBe('100 MB');
+    expect(formatBytes(3 * 1024 ** 3)).toBe('3 GB');
   });
 });

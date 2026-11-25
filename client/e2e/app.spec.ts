@@ -86,3 +86,44 @@ test('logging in shows the dashboard with live charts', async ({ page }) => {
   await page.getByRole('menuitem', { name: 'Logout' }).click();
   await expect(page).toHaveURL(/\/login$/);
 });
+
+test('the admin screen shows the database size and sets its limit', async ({ page }) => {
+  await page.goto('/login');
+  await page.getByLabel('User').fill('admin');
+  await page.getByLabel('Password').fill('password');
+  await page.getByRole('button', { name: 'Login' }).click();
+  await expect(page).toHaveURL(/\/$/);
+
+  await page.getByRole('link', { name: 'Admin panel' }).click();
+  await expect(page).toHaveURL(/\/admin$/);
+  const usage = page.getByRole('region', { name: 'Database usage' });
+  await expect(usage).toHaveText('48 MB used, no size limit');
+  await expect(page.getByText('52 MB')).toBeVisible();
+  await expect(page.getByText('86,400')).toBeVisible();
+
+  // Limit the database to 40 MB: the oldest samples are deleted at once.
+  const limit = page.getByRole('spinbutton', { name: 'Size limit' });
+  await expect(limit).toBeDisabled();
+  await page.getByRole('switch', { name: 'Limit the database size' }).click();
+  await limit.fill('40');
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByRole('status')).toHaveText(/Limit set to 40 MB\. \d+ old samples were deleted\./);
+  await expect(usage).toContainText('36 MB used of 40 MB (90%)');
+  await expect(page.getByRole('progressbar', { name: 'Share of the size limit in use' })).toHaveAttribute(
+    'aria-valuenow',
+    '90',
+  );
+
+  // An invalid limit is not sent.
+  await limit.fill('0');
+  await page.getByRole('button', { name: 'Save' }).click();
+  await expect(page.getByText('A whole number of MB, at least 1')).toBeVisible();
+
+  // Compacting gives the free pages back.
+  await page.getByRole('button', { name: 'Compact' }).click();
+  await expect(page.getByRole('status')).toHaveText('Database compacted: 36 MB on disk.');
+
+  // Reloading keeps the saved limit (the form is filled from the server).
+  await page.reload();
+  await expect(limit).toHaveValue('40');
+});

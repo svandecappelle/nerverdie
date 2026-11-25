@@ -5,6 +5,7 @@ from playhouse.migrate import SqliteMigrator, migrate
 
 from server.models.base import db
 from server.models.metrics import Cpu, CpuCore
+from server.models.setting import Setting
 from server.models.user import User
 
 
@@ -20,7 +21,7 @@ class Datastore():
 
     def __init__(self, args=None):
         db.connect(reuse_if_open=True)
-        db.create_tables([Cpu, CpuCore, User])
+        db.create_tables([Cpu, CpuCore, User, Setting])
         _add_missing_user_columns()
 
     def close(self):
