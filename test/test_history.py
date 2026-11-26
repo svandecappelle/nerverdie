@@ -2,6 +2,7 @@
 """Metrics history by time range, and the values stored by the collector."""
 
 import datetime
+import time
 
 import pytest
 
@@ -14,6 +15,11 @@ NOW = datetime.datetime.now().replace(microsecond=0)
 
 def ms(moment):
     return int(moment.timestamp() * 1000)
+
+
+def iso(moment):
+    """A local datetime as the API sends it: with the UTC offset of the server."""
+    return moment.astimezone().isoformat(timespec='seconds')
 
 
 def store(moment, loads=(), measures=None, as_string=False):
@@ -47,7 +53,7 @@ def test_cpu_history_returns_every_sample_of_a_short_range(logged_client):
     result = history(logged_client, 'cpu')
 
     assert result['samples'] == [
-        {'date': moment.strftime('%Y-%m-%d %H:%M:%S'),
+        {'date': iso(moment),
          'cpu0': 10.0 * (index + 1), 'cpu1': 10.0 * (index + 1) + 1, 'cpu2': 10.0 * (index + 1) + 2}
         for index, moment in enumerate(times)
     ]
@@ -66,7 +72,7 @@ def test_long_ranges_are_averaged_by_buckets(logged_client):
     assert all(sample['cpu0'] == 50 for sample in result['samples'][:-1])
     dates = [sample['date'] for sample in result['samples']]
     assert dates == sorted(dates)
-    assert dates[0] == start.strftime('%Y-%m-%d %H:%M:%S')
+    assert dates[0] == iso(start)
 
 
 def test_range_bounds_are_applied(logged_client):
@@ -85,8 +91,36 @@ def test_memory_and_network_history(logged_client):
     memory = history(logged_client, 'memory')['samples']
     assert [(s['used'], s['swap']) for s in memory] == [(4e9, 1e9), (5e9, 1e9)]
     network = history(logged_client, 'network')['samples']
-    assert network == [{'date': (NOW - datetime.timedelta(seconds=3)).strftime('%Y-%m-%d %H:%M:%S'),
+    assert network == [{'date': iso(NOW - datetime.timedelta(seconds=3)),
                         'incoming': 1000, 'outgoing': 250}]
+
+
+def test_dates_carry_the_utc_offset_of_the_server(logged_client):
+    # A browser in another time zone must read the moment of the sample, not the same clock time.
+    store(NOW - datetime.timedelta(seconds=3), [42])
+    result = history(logged_client, 'cpu')
+    for date in (result['samples'][0]['date'], result['from'], result['to']):
+        assert datetime.datetime.fromisoformat(date).utcoffset() is not None
+    moment = datetime.datetime.fromisoformat(result['samples'][0]['date'])
+    assert moment.timestamp() == (NOW - datetime.timedelta(seconds=3)).timestamp()
+
+
+@pytest.mark.skipif(not hasattr(time, 'tzset'), reason='changing the time zone needs time.tzset (POSIX)')
+@pytest.mark.parametrize('zone', ['UTC', 'Asia/Kolkata', 'America/New_York'])
+def test_dates_are_right_whatever_the_server_time_zone(logged_client, monkeypatch, zone):
+    monkeypatch.setenv('TZ', zone)
+    time.tzset()
+    try:
+        now = datetime.datetime.now().replace(microsecond=0)
+        store(now - datetime.timedelta(seconds=3), [42], as_string=True)
+        result = history(logged_client, 'cpu', **{
+            'from': ms(now - datetime.timedelta(minutes=5)), 'to': ms(now)})
+        [sample] = result['samples']
+        assert datetime.datetime.fromisoformat(sample['date']).timestamp() == ms(now) / 1000 - 3
+        assert datetime.datetime.fromisoformat(result['to']).timestamp() == ms(now) / 1000
+    finally:
+        monkeypatch.undo()  # puts TZ back as it was
+        time.tzset()
 
 
 @pytest.mark.parametrize('params', [

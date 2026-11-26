@@ -74,6 +74,18 @@ describe('historyToSeries', () => {
     ]);
   });
 
+  it('places dates by their UTC offset, whatever the time zone of the browser', () => {
+    // A server in UTC and one in UTC+05:30 describing the same moment.
+    const [cpu0] = historyToSeries(
+      [
+        { date: '2026-11-26T02:19:29+00:00', cpu0: 10 },
+        { date: '2026-11-26T07:49:32+05:30', cpu0: 20 },
+      ],
+      ['cpu0'],
+    );
+    expect(cpu0.map((p) => p.x)).toEqual([Date.UTC(2026, 10, 26, 2, 19, 29), Date.UTC(2026, 10, 26, 2, 19, 32)]);
+  });
+
   it('draws a gap where the collection stopped, and for missing values', () => {
     const [cpu0] = historyToSeries(
       [

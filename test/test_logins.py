@@ -43,8 +43,9 @@ def test_account_is_locked_after_too_many_failures(client):
 
     response = login(client, password='wrong', address='10.0.1.1')
     assert response.status_code == 423
-    until = datetime.strptime(response.get_json()['locked_until'], '%Y-%m-%d %H:%M:%S')
-    assert timedelta(minutes=14) < until - datetime.now() <= timedelta(minutes=15)
+    until = datetime.fromisoformat(response.get_json()['locked_until'])
+    assert until.utcoffset() is not None
+    assert timedelta(minutes=14) < until - datetime.now().astimezone() <= timedelta(minutes=15)
 
     # Even the right password is refused while locked.
     response = login(client)

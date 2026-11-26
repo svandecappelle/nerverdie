@@ -14,6 +14,7 @@ new rows. The limit therefore applies to the pages in use, and `compact()`
 import logging
 import os
 
+from server.console.history import json_date
 from server.models.base import db
 from server.models.metrics import Cpu, CpuCore, Measure
 from server.models.setting import Setting
@@ -122,8 +123,8 @@ def storage_status():
         'file_bytes': file_bytes(),
         'free_bytes': _pragma('freelist_count') * _pragma('page_size'),
         'samples': Cpu.select().count(),
-        'oldest': oldest.time.isoformat(sep=' ', timespec='seconds') if oldest else None,
-        'newest': newest.time.isoformat(sep=' ', timespec='seconds') if newest else None,
+        'oldest': json_date(oldest.time) if oldest else None,
+        'newest': json_date(newest.time) if newest else None,
         'min_limit_mb': MIN_LIMIT_MB,
         'max_limit_mb': MAX_LIMIT_MB,
     }

@@ -18,7 +18,7 @@ from datetime import datetime, timedelta
 
 from peewee import fn
 
-from server.console.history import _format, _from_epoch
+from server.console.history import _format, _from_epoch, json_date
 from server.models.base import db
 from server.models.security import LoginEvent
 from server.models.setting import Setting
@@ -132,7 +132,7 @@ def unlock(username):
 
 def describe_lock(until):
     """JSON value of a lock end: a date, or None for a lock without end."""
-    return None if until is None or until == FOREVER else _format(until)
+    return None if until is None or until == FOREVER else json_date(until)
 
 
 def accounts():
@@ -164,7 +164,7 @@ def record(username, address, outcome):
 def recent(limit=20):
     """The last login attempts, newest first."""
     query = LoginEvent.select().order_by(LoginEvent.time.desc(), LoginEvent.id.desc()).limit(limit)
-    return [{'time': _format(event.time), 'username': event.username,
+    return [{'time': json_date(event.time),'username': event.username,
              'address': event.address, 'outcome': event.outcome} for event in query]
 
 
@@ -206,7 +206,7 @@ def history(start=None, end=None, buckets=DEFAULT_BUCKETS):
     samples = {}
     moment = first
     while moment <= _epoch(end):
-        samples[moment] = {'date': _format(_from_epoch(moment)), 'success': 0, 'failure': 0, 'refused': 0}
+        samples[moment] = {'date': json_date(_from_epoch(moment)),'success': 0, 'failure': 0, 'refused': 0}
         moment += step
 
     # Only internal constants are formatted in; the range is a parameter.
@@ -220,4 +220,4 @@ def history(start=None, end=None, buckets=DEFAULT_BUCKETS):
         if sample is not None:
             key = outcome if outcome in ('success', 'failure') else 'refused'
             sample[key] += count
-    return {'step': step, 'from': _format(start), 'to': _format(end), 'samples': list(samples.values())}
+    return {'step': step, 'from': json_date(start), 'to': json_date(end), 'samples': list(samples.values())}
