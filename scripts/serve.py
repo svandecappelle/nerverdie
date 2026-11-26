@@ -30,16 +30,19 @@ def fail(message):
     sys.exit('serve: ' + message)
 
 
-def uv_command():
-    """uv executable, or `python -m uv` when it is only installed as a module."""
+def python_command():
+    """`uv run python` when uv is installed, else the Python of .venv (created with pip if needed)."""
     uv = shutil.which('uv')
     if uv:
-        return [uv]
+        return [uv, 'run', 'python']
     try:
         import uv as _uv  # noqa: F401
+        return [sys.executable, '-m', 'uv', 'run', 'python']
     except ImportError:
-        fail('uv is not installed. Run: python -m pip install --user uv')
-    return [sys.executable, '-m', 'uv']
+        pass
+    sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+    from bootstrap import ensure_venv
+    return [ensure_venv()]
 
 
 def npm_command():
@@ -178,7 +181,7 @@ def main(argv=None):
     if IS_WINDOWS:
         signal.signal(signal.SIGBREAK, interrupt)
 
-    uv = uv_command()
+    python = python_command()
     processes = {}
     if not args.no_ui:
         check_node()
@@ -189,7 +192,7 @@ def main(argv=None):
                 fail('npm ci failed')
 
     try:
-        processes['api'] = start('api', uv + ['run', 'python', 'start.py', '-P', '5000'], ROOT)
+        processes['api'] = start('api', python + ['start.py', '-P', '5000'], ROOT)
         if not args.no_ui:
             processes['ui'] = start('ui', [npm, 'start'], CLIENT)
             print('API: http://127.0.0.1:5000  -  UI: http://localhost:4200  (Ctrl+C to stop)')

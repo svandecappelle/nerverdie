@@ -1,9 +1,14 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
 [project]
 name = "neverdie"
 version = "1.0.0"
 description = "Python server monitoring"
 readme = "README.md"
-license = { file = "LICENSE" }
+license = "GPL-3.0-only"
+license-files = ["LICENSE"]
 requires-python = ">=3.10"
 classifiers = [
     "Topic :: System :: Monitoring",
@@ -36,6 +41,10 @@ dev = [
 # Application, not a library: install dependencies only.
 package = false
 
+[tool.setuptools.packages.find]
+# `pip install .` packages the server only (client/ and etc/ are not Python packages).
+include = ["server*"]
+
 [tool.pytest.ini_options]
 testpaths = ["test"]
 pythonpath = ["."]
@@ -55,4 +64,4 @@ ignore = [
 
 [tool.ruff.lint.per-file-ignores]
 "test/**" = ["S105", "S106"]  # test passwords
-"scripts/**" = ["S603", "S607"]  # dev launcher: fixed commands (uv, npm, taskkill), no shell
+"scripts/**" = ["S603", "S606", "S607"]  # launchers: fixed commands (uv, npm, pip, the app), no shell

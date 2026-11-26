@@ -69,6 +69,35 @@ jobs:
       - name: Pytest
         run: uv run pytest
 
+  pip-install:
+    name: pip install, without uv (${{ matrix.os }})
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.14"
+
+      # The project builds as a package (pip install . must work).
+      - name: Build the package
+        run: python -m pip wheel --no-deps --wheel-dir dist .
+
+      - name: Create .venv with pip (scripts/bootstrap.py)
+        run: python scripts/bootstrap.py --dev
+
+      - name: Pytest from .venv
+        shell: bash
+        run: |
+          if [ -x .venv/bin/python ]; then py=.venv/bin/python; else py=.venv/Scripts/python.exe; fi
+          "$py" -m pytest
+
   client:
     name: Client (audit, lint, tests, build, e2e)
     runs-on: ubuntu-latest

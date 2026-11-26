@@ -5,6 +5,18 @@ Python monitor servers
 Requires Python 3.10 or later. Dependencies are declared in `pyproject.toml`
 and pinned in `uv.lock`.
 
+### With pip only (automatic virtual environment)
+No tool to install besides Python:
+```
+python scripts/run.py
+```
+The first run creates `.venv`, installs the dependencies in it with pip (`pip install -e .`) and starts the web service; later runs start right away, and the dependencies are installed again only when `pyproject.toml` changes. The arguments go to `start.py` (`python scripts/run.py -P 8080`), unless the first one is another script: `python scripts/run.py manage.py create-user <username>`, `python scripts/run.py console.py`.
+
+* `python scripts/bootstrap.py` only creates or updates `.venv`; `--dev` adds pytest, ruff and pip-audit, `--recreate` builds it again from scratch. `NEVERDIE_VENV` sets another directory.
+* `make venv` (with the dev tools) and `make run` do the same. `make serve` uses `.venv` too when uv is not installed.
+* On Debian or Ubuntu, Python needs its venv module: `sudo apt install python3-venv` (the script says so when it is missing).
+* `pip install .` also works, to install the server package and its dependencies in an environment of your own.
+
 ### With uv
 Install [uv](https://docs.astral.sh/uv/) (for instance `python -m pip install --user uv`), then:
 ```
