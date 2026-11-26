@@ -1,5 +1,7 @@
 import { Injectable, computed, signal } from '@angular/core';
 
+import { CPU_VIEWS, CpuView } from './cpu-series';
+
 export type PanelId = 'cpu' | 'memory' | 'network';
 export type PanelWidth = 'full' | 'half';
 export type PanelHeight = 'small' | 'medium' | 'large';
@@ -11,10 +13,11 @@ export interface PanelLayout {
   height: PanelHeight;
 }
 
-/** Dashboard layout: chart panels in display order, and the hidden status tiles. */
+/** Dashboard layout: chart panels in display order, the hidden status tiles and the CPU chart view. */
 export interface DashboardLayout {
   panels: PanelLayout[];
   hiddenTiles: string[];
+  cpuView: CpuView;
 }
 
 export const PANEL_IDS: PanelId[] = ['cpu', 'memory', 'network'];
@@ -28,6 +31,7 @@ export const HEIGHT_PX: Record<PanelHeight, string> = { small: '200px', medium: 
 export const DEFAULT_LAYOUT: DashboardLayout = {
   panels: PANEL_IDS.map((id) => ({ id, visible: true, width: 'full', height: 'medium' })),
   hiddenTiles: [],
+  cpuView: 'cores',
 };
 
 const STORAGE_KEY = 'neverdie.dashboard';
@@ -58,7 +62,8 @@ export function sanitizeLayout(value: unknown): DashboardLayout {
   const hiddenTiles = Array.isArray(layout.hiddenTiles)
     ? layout.hiddenTiles.filter((tile): tile is string => typeof tile === 'string')
     : [];
-  return { panels, hiddenTiles };
+  const cpuView = CPU_VIEWS.includes(layout.cpuView as CpuView) ? (layout.cpuView as CpuView) : 'cores';
+  return { panels, hiddenTiles, cpuView };
 }
 
 /** Layout of the dashboard chosen by the viewer, kept in the browser. */
@@ -90,6 +95,10 @@ export class DashboardLayoutService {
   setTileVisible(tile: string, visible: boolean): void {
     const hidden = this.layout().hiddenTiles.filter((t) => t !== tile);
     this.save({ ...this.layout(), hiddenTiles: visible ? hidden : [...hidden, tile] });
+  }
+
+  setCpuView(cpuView: CpuView): void {
+    this.save({ ...this.layout(), cpuView });
   }
 
   isTileVisible(tile: string): boolean {

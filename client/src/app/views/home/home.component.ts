@@ -1,6 +1,7 @@
 import { Component, DestroyRef, OnInit, computed, inject, signal } from '@angular/core';
 import { takeUntilDestroyed, toObservable } from '@angular/core/rxjs-interop';
 import { MatButtonModule } from '@angular/material/button';
+import { MatButtonToggleModule } from '@angular/material/button-toggle';
 import { MatIconModule } from '@angular/material/icon';
 import { catchError, forkJoin, interval, map, of, startWith, switchMap, tap } from 'rxjs';
 
@@ -16,6 +17,7 @@ import { DataService } from '../../services/data.service';
 import { AbsoluteRange, formatAbsolute } from '../../time-range/time-range';
 import { TimeRangePickerComponent } from '../../time-range/time-range-picker.component';
 import { TimeRangeService } from '../../time-range/time-range.service';
+import { CPU_VIEWS, CPU_VIEW_LABELS, CpuView, cpuLegends, withOverallLoad } from './cpu-series';
 import { DashboardCustomizerComponent } from './dashboard-customizer.component';
 import { DashboardLayoutService, HEIGHT_PX, PANEL_TITLES, PanelId } from './dashboard-layout.service';
 
@@ -50,12 +52,8 @@ const PANELS: Record<PanelId, { subtitle: string; type: ChartType; unit: ChartUn
 const MEMORY_SERIES = { used: 'Used', swap: 'Swap' };
 const NETWORK_SERIES = { incoming: 'Received', outgoing: 'Sent' };
 
-/** CPU keys found in the samples, in core order (cpu0, cpu1, ..., cpu10). */
-function cpuKeys(samples: MetricHistory['samples']): string[] {
-  const keys = new Set<string>();
-  samples.forEach((sample) => Object.keys(sample).forEach((key) => /^cpu\d+$/.test(key) && keys.add(key)));
-  return [...keys].sort((a, b) => Number(a.slice(3)) - Number(b.slice(3)));
-}
+/** Look of the CPU panel in the overall view. */
+const OVERALL_CPU_PANEL = { subtitle: 'Overall load, mean of the cores', type: 'areaspline' as ChartType };
 
 function toSeries(history: MetricHistory, legends: Record<string, string>): ChartSeries[] {
   const keys = Object.keys(legends);
@@ -120,6 +118,7 @@ const clampRatio = (ratio: number) => (Number.isFinite(ratio) ? Math.min(Math.ma
     TimeRangePickerComponent,
     DashboardCustomizerComponent,
     MatButtonModule,
+    MatButtonToggleModule,
     MatIconModule,
   ],
   templateUrl: './home.component.html',
@@ -137,6 +136,11 @@ export class HomeComponent implements OnInit {
   readonly visibleTiles = computed(() => this.tiles().filter((tile) => this.layout.isTileVisible(tile.text)));
   /** Whether the customize panel is open. */
   readonly editing = signal(false);
+
+  readonly cpuViews = CPU_VIEWS.map((view) => ({ view, label: CPU_VIEW_LABELS[view] }));
+  setCpuView(view: CpuView): void {
+    this.layout.setCpuView(view);
+  }
 
   /** Server reachability, from the last answer of every tile. */
   readonly health = computed(() => {
@@ -158,8 +162,25 @@ export class HomeComponent implements OnInit {
 
   protected readonly time = inject(TimeRangeService);
 
-  /** Series shown by the charts, for `chartsRange`. */
-  readonly charts = signal<DashboardCharts>({});
+  /** History of the shown charts, for `chartsRange`. */
+  private readonly history = signal<Partial<Record<PanelId, MetricHistory>>>({});
+  /** Series shown by the charts (switching the CPU view does not reload the history). */
+  readonly charts = computed<DashboardCharts>(() => {
+    const history = this.history();
+    const charts: DashboardCharts = {};
+    if (history.cpu) {
+      const view = this.layout.layout().cpuView;
+      const cpu = view === 'overall' ? { ...history.cpu, samples: withOverallLoad(history.cpu.samples) } : history.cpu;
+      charts.cpu = toSeries(cpu, cpuLegends(history.cpu.samples, view));
+    }
+    if (history.memory) {
+      charts.memory = toSeries(history.memory, MEMORY_SERIES);
+    }
+    if (history.network) {
+      charts.network = toSeries(history.network, NETWORK_SERIES);
+    }
+    return charts;
+  });
   readonly chartsRange = signal<AbsoluteRange | undefined>(undefined);
   readonly chartsError = signal(false);
 
@@ -193,20 +214,7 @@ export class HomeComponent implements OnInit {
           if (!history) {
             return;
           }
-          const charts: DashboardCharts = {};
-          if (history.cpu) {
-            const legends = Object.fromEntries(
-              cpuKeys(history.cpu.samples).map((key) => [key, `Cpu load ${key.slice(3)}`]),
-            );
-            charts.cpu = toSeries(history.cpu, legends);
-          }
-          if (history.memory) {
-            charts.memory = toSeries(history.memory, MEMORY_SERIES);
-          }
-          if (history.network) {
-            charts.network = toSeries(history.network, NETWORK_SERIES);
-          }
-          this.charts.set(charts);
+          this.history.set(history);
           this.chartsRange.set(range);
         }),
         takeUntilDestroyed(),
@@ -217,8 +225,10 @@ export class HomeComponent implements OnInit {
   /** Visible charts, in the chosen order and size. */
   readonly chartList = computed(() => {
     const charts = this.charts();
+    const overallCpu = this.layout.layout().cpuView === 'overall';
     return this.layout.visiblePanels().map((panel) => ({
       ...PANELS[panel.id],
+      ...(panel.id === 'cpu' && overallCpu ? OVERALL_CPU_PANEL : {}),
       id: panel.id,
       title: PANEL_TITLES[panel.id],
       series: charts[panel.id] ?? [],

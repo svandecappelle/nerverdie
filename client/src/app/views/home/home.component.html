@@ -47,8 +47,24 @@
   <section class="charts" aria-label="Server loads over the time range">
     @for (chart of chartList(); track chart.id) {
       <article class="panel" [class.wide]="chart.wide">
-        <h2 class="panel-title">{{ chart.title }}</h2>
-        <p class="panel-subtitle">{{ chart.subtitle }}</p>
+        <div class="panel-head">
+          <div>
+            <h2 class="panel-title">{{ chart.title }}</h2>
+            <p class="panel-subtitle">{{ chart.subtitle }}</p>
+          </div>
+          @if (chart.id === 'cpu') {
+            <mat-button-toggle-group
+              [value]="layout.layout().cpuView"
+              (change)="setCpuView($event.value)"
+              [aria-label]="'CPU chart view'"
+              hideSingleSelectionIndicator
+            >
+              @for (option of cpuViews; track option.view) {
+                <mat-button-toggle [value]="option.view">{{ option.label }}</mat-button-toggle>
+              }
+            </mat-button-toggle-group>
+          }
+        </div>
         <div class="chart-box">
           <app-chart
             [series]="chart.series"

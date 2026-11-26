@@ -85,6 +85,20 @@ test('logging in shows the dashboard with live charts', async ({ page }) => {
     )
     .toEqual([true, true, true]);
 
+  // The CPU chart switches to the overall load, without reloading the history,
+  // and the choice survives a reload.
+  const cpuView = page.getByRole('radiogroup', { name: 'CPU chart view' });
+  const historyCalls: string[] = [];
+  page.on('request', (request) => request.url().includes('/api/history/') && historyCalls.push(request.url()));
+  await cpuView.getByRole('radio', { name: 'Overall' }).click();
+  await expect(page.getByRole('img', { name: 'CPU' })).toContainText('Overall load');
+  await expect(page.locator('.charts .panel').first()).toContainText('Overall load, mean of the cores');
+  expect(historyCalls).toEqual([]);
+  await page.reload();
+  await expect(cpuView.getByRole('radio', { name: 'Overall' })).toBeChecked();
+  await cpuView.getByRole('radio', { name: 'Per core' }).click();
+  await expect(page.getByRole('img', { name: 'CPU' })).toContainText('Cpu load 0, Cpu load 1');
+
   // Logout brings the login page back.
   await page.getByRole('button', { name: 'User menu' }).click();
   await page.getByRole('menuitem', { name: 'Logout' }).click();

@@ -76,6 +76,8 @@ The dashboard charts the CPU load per core, the memory and the network traffic o
 * drag over a chart to zoom into the selected span; double-click a chart to zoom out.
 * the refresh button reloads the charts, and the menu next to it sets the auto-refresh interval (*Off* to *5m*).
 
+The *Per core* / *Overall* switch of the CPU chart shows one line per core or the overall load (the mean of the cores, like the system-wide CPU percent). The choice is saved with the dashboard layout.
+
 The range and the refresh interval are kept in the URL (`/?from=now-6h&to=now&refresh=30s`), so a view can be bookmarked or shared.
 
 *Customize* (next to the time range) opens the dashboard editor: show or hide each status tile and chart, reorder the charts (drag the rows or use the arrows), and set each chart to half or full width and to a small, medium or large height. The layout is saved in the browser; *Reset* brings the default one back (every chart at full width). Hidden charts are not loaded.

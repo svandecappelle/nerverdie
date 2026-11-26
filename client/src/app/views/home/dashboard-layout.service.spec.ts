@@ -18,6 +18,7 @@ describe('sanitizeLayout', () => {
         { id: 'cpu', width: 'huge', height: 12 },
       ],
       hiddenTiles: ['Uptime', 4],
+      cpuView: 'sideways',
     });
     expect(layout).toEqual({
       panels: [
@@ -26,7 +27,9 @@ describe('sanitizeLayout', () => {
         { id: 'memory', visible: true, width: 'full', height: 'medium' },
       ],
       hiddenTiles: ['Uptime'],
+      cpuView: 'cores',
     });
+    expect(sanitizeLayout({ cpuView: 'overall' }).cpuView).toBe('overall');
   });
 });
 
@@ -78,8 +81,17 @@ describe('DashboardLayoutService', () => {
     expect(layout.isTileVisible('Uptime')).toBe(true);
   });
 
+  it('switches the CPU chart view and keeps it', () => {
+    const layout = service();
+    layout.setCpuView('overall');
+    expect(layout.layout().cpuView).toBe('overall');
+    expect(layout.customized()).toBe(true);
+    expect(stored().cpuView).toBe('overall');
+  });
+
   it('resets to the default layout', () => {
     const layout = service();
+    layout.setCpuView('overall');
     layout.updatePanel('cpu', { visible: false });
     layout.setTileVisible('Host', false);
     layout.reset();
