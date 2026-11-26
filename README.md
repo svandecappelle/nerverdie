@@ -5,6 +5,18 @@ Python monitor servers
 Requires Python 3.10 or later. Dependencies are declared in `pyproject.toml`
 and pinned in `uv.lock`.
 
+### With pip only (automatic virtual environment)
+No tool to install besides Python:
+```
+python scripts/run.py
+```
+The first run creates `.venv`, installs the dependencies in it with pip (`pip install -e .`) and starts the web service; later runs start right away, and the dependencies are installed again only when `pyproject.toml` changes. The arguments go to `start.py` (`python scripts/run.py -P 8080`), unless the first one is another script: `python scripts/run.py manage.py create-user <username>`, `python scripts/run.py console.py`.
+
+* `python scripts/bootstrap.py` only creates or updates `.venv`; `--dev` adds pytest, ruff and pip-audit, `--recreate` builds it again from scratch. `NEVERDIE_VENV` sets another directory.
+* `make venv` (with the dev tools) and `make run` do the same. `make serve` uses `.venv` too when uv is not installed.
+* On Debian or Ubuntu, Python needs its venv module: `sudo apt install python3-venv` (the script says so when it is missing).
+* `pip install .` also works, to install the server package and its dependencies in an environment of your own.
+
 ### With uv
 Install [uv](https://docs.astral.sh/uv/) (for instance `python -m pip install --user uv`), then:
 ```
@@ -15,7 +27,7 @@ uv sync
   ```
   make serve
   ```
-  The API runs on http://127.0.0.1:5000 and the UI dev server on http://localhost:4200 (it forwards `/api` to the API). Requires Node.js 22 or later; client dependencies are installed on first run. `make serve-api` starts the API only. Ctrl+C stops everything.
+  The API runs on http://127.0.0.1:5000 and the UI dev server on http://localhost:4200 (it forwards `/api` to the API); see [Configuration](#configuration-address-and-ports) to change the ports. Requires Node.js 22 or later; client dependencies are installed on first run. `make serve-api` starts the API only. Ctrl+C stops everything.
   Without make (or on Windows without it, `scoop install make` / `choco install make`): ```python scripts/serve.py``` (`--no-ui` for the API only).
 * Run app:
   * In web service: ```uv run python start.py``` (options: `-H <host>`, `-P <port>`, `-t <threads>`), served by the waitress WSGI server
@@ -34,6 +46,25 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on every push to `master`, on p
 
 `uv sync --locked` fails when `uv.lock` is out of date with `pyproject.toml`: run `uv lock` and commit it.
 Dependabot (`.github/dependabot.yml`) opens weekly update pull requests for the Python dependencies, the client npm packages (Angular major versions excluded: use `ng update`) and the actions.
+
+## Configuration (address and ports)
+The web service listens on `127.0.0.1:5000` with 8 request threads by default. Each setting comes from, by priority:
+1. the command line: `python start.py -H <host> -P <port> -t <threads>` (or `python scripts/run.py -P <port>`);
+2. an environment variable: `NEVERDIE_HOST`, `NEVERDIE_PORT`, `NEVERDIE_THREADS`;
+3. the configuration file `etc/neverdie.yml` (or the file named by `NEVERDIE_CONFIG`);
+4. the default.
+
+```yaml
+server:
+  host: 127.0.0.1   # 0.0.0.0: every interface
+  port: 5000
+  threads: 8
+dev:
+  ui_port: 4200     # Angular dev server of `make serve` (or NEVERDIE_UI_PORT)
+```
+Every setting of `etc/neverdie.yml` is commented out at first: uncomment the ones to change. A wrong value or an unknown setting stops the start with a message naming it. `python -m server.settings.config` prints the resulting values.
+
+`make serve` follows the same configuration: the API starts on the configured port, the UI dev server on `dev.ui_port`, and its proxy forwards `/api` to the API port (`client/proxy.conf.mjs`, `NEVERDIE_API_URL`).
 
 ## Users and security
 There are no default credentials. Create an account before logging in:
@@ -94,6 +125,43 @@ The limit applies to the data held in the database. Deleted rows leave free page
 The same settings are available through the API (logged-in users): `GET /api/admin/storage`, `PUT /api/admin/storage` with `{"limit_mb": 500}` (`null` or `0`: unlimited) and `POST /api/admin/storage/compact`.
 
 ## Production deployment
+### Automatic: `make install` (Linux, nginx, HTTPS)
+On a Linux server with systemd (Debian, Ubuntu, Fedora, RHEL...), run as the user that will run Neverdie (not root, it asks for sudo when needed):
+```
+make install
+```
+(or `python scripts/install.py`). It:
+1. creates or updates `.venv` and builds the UI (`npm ci`, `npm run build`; Node.js 22 or later, or `--skip-build` with a `client/dist` built elsewhere);
+2. installs nginx when missing (apt, dnf, yum or zypper);
+3. copies the built UI to `/var/www/neverdie`: nginx serves it, and forwards `/api` to the app on `127.0.0.1:<server.port>`;
+4. creates the certificate in `/etc/neverdie/tls`: self-signed by default, for the server name, `localhost` and `127.0.0.1`, valid 825 days and renewed by `make install` 30 days before it expires;
+5. writes the nginx site (`/etc/nginx/sites-available/neverdie`, or `conf.d/neverdie.conf`): HTTP redirects to HTTPS, TLS 1.2 and 1.3, the app's security headers plus HSTS, long caching of the build files. On Debian and Ubuntu the stock default site is turned off;
+6. installs the systemd service `neverdie` (running `start.py` from `.venv` with `NEVERDIE_COOKIE_SECURE=1` and `NEVERDIE_TRUSTED_PROXIES=1`), starts it, and checks that the site answers over HTTPS.
+
+Settings, in the `install` section of `etc/neverdie.yml` (or the variables in brackets):
+```yaml
+install:
+  server_name: monitor.example.com  # (NEVERDIE_SERVER_NAME) one or more names / IP addresses, see below
+  http_port: 80                     # (NEVERDIE_HTTP_PORT)
+  https_port: 443                   # (NEVERDIE_HTTPS_PORT)
+  certificate: self-signed          # (NEVERDIE_CERTIFICATE) or letsencrypt
+  email: ops@example.com            # (NEVERDIE_LETSENCRYPT_EMAIL) Let's Encrypt notices, optional
+```
+* **Server names**: nginx shows Neverdie for links whose name is in `server_name`; a link with another name or address shows the *default site* of the port when nginx serves other sites. List every name and address used to open the monitor: `server_name: [monitor.example.com, 192.168.1.20]` (or `"monitor.example.com 192.168.1.20"`); the first one is the main name. When it is not set, `make install` uses the names and IPv4 addresses of the machine. It stops when another nginx site already uses one of these names, and tells which site answers the other links.
+* **Self-signed** (default): browsers warn about the certificate until it is trusted on the computers that open the site (import `/etc/neverdie/tls/neverdie.crt`). Fine on a private network.
+* **Let's Encrypt** (`certificate: letsencrypt`): a certificate trusted by browsers, for a public domain name that points to this server, with port 80 reachable from the Internet. certbot is installed when missing, asks you to accept the Let's Encrypt terms the first time, and renews the certificate by itself (nginx is reloaded after each renewal).
+
+**Update** an installed Neverdie with:
+```
+make update
+```
+(or `python scripts/install.py --update`). It pulls the new version (`git pull --ff-only`, skipped with `--no-pull` or outside a git checkout), updates `.venv`, rebuilds the UI (running `npm ci` again when `package-lock.json` changed), publishes it to `/var/www/neverdie` and restarts the `neverdie` service, then checks that the site answers. It keeps the configuration as installed: the nginx site, the certificate, the systemd unit and `etc/neverdie.yml` are not changed (a local change to `etc/neverdie.yml` that the new version also changes stops `git pull`: keep your settings in a file outside the checkout with `NEVERDIE_CONFIG`). It refuses to go on when `server.host` or `server.port` changed since `make install` (nginx would forward the API to the old address), and tells when an `install` setting changed: run `make install` to apply those.
+
+Run `make install` again to apply a new configuration. Options: `--dry-run DIR` writes the nginx site and the service to `DIR` and prints the commands without changing anything (works on any system), `--no-service` leaves the app out (nginx only), `--renew-certificate` makes a new self-signed certificate. `make uninstall` removes the service, the nginx site and `/var/www/neverdie` (it keeps nginx, the certificates, the database and `.venv`).
+
+Logs: `journalctl -u neverdie -f`. With SELinux enforcing, `make install` allows nginx to connect to the app (`httpd_can_network_connect`).
+
+### Manual
 Keep the app listening on `127.0.0.1` (the default) and put a TLS reverse proxy in front of it. Example with [Caddy](https://caddyserver.com/), which obtains the certificate automatically:
 ```
 monitor.example.com {

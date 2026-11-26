@@ -1,0 +1,995 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+"""Install Neverdie for production on Linux: nginx in front, over HTTPS.
+
+    make install                              # or: python scripts/install.py
+    python scripts/install.py --dry-run out   # write the files to out/, change nothing
+    make update                               # or: python scripts/install.py --update
+    make uninstall                            # or: python scripts/install.py --uninstall
+
+Run it as the user that will run Neverdie (not root): it asks for sudo when
+needed. It:
+1. creates or updates .venv (scripts/bootstrap.py) and builds the UI (npm);
+2. installs nginx (and certbot for Let's Encrypt) when missing;
+3. copies the built UI to /var/www/neverdie, served by nginx, which forwards
+   /api to the app on 127.0.0.1;
+4. creates the certificate: self-signed (default) or Let's Encrypt;
+5. writes the nginx site (HTTP redirected to HTTPS) and a systemd service
+   for the app, then starts both and checks that the site answers.
+
+Settings: the `install` and `server` sections of etc/neverdie.yml, or the
+NEVERDIE_SERVER_NAME, NEVERDIE_HTTPS_PORT... variables (see README).
+
+`make update` updates an installed Neverdie without touching its configuration:
+it pulls the new version (git pull --ff-only), updates .venv, rebuilds and
+publishes the UI, then restarts the service; the nginx site, the certificate,
+the systemd unit and etc/neverdie.yml stay as they are.
+"""
+
+import argparse
+import getpass
+import ipaddress
+import json
+import os
+import re
+import shlex
+import shutil
+import socket
+import ssl
+import subprocess
+import sys
+import tempfile
+import time
+import urllib.error
+import urllib.request
+
+SCRIPTS = os.path.dirname(os.path.abspath(__file__))
+sys.path.insert(0, SCRIPTS)
+from bootstrap import ROOT, ensure_venv  # noqa: E402
+
+sys.path.insert(0, ROOT)
+from server.settings.security import SECURITY_HEADERS  # noqa: E402  (standard library only)
+
+CLIENT = os.path.join(ROOT, 'client')
+DIST = os.path.join(CLIENT, 'dist')
+WEB_ROOT = '/var/www/neverdie'
+ACME_ROOT = '/var/lib/neverdie/acme'
+ETC = '/etc/neverdie'
+TLS_DIR = ETC + '/tls'
+STATE = ETC + '/install.json'
+SERVICE_NAME = 'neverdie'
+SERVICE_FILE = '/etc/systemd/system/neverdie.service'
+SITES_AVAILABLE = '/etc/nginx/sites-available'
+SITES_ENABLED = '/etc/nginx/sites-enabled'
+CONF_D = '/etc/nginx/conf.d'
+LETSENCRYPT_LIVE = '/etc/letsencrypt/live'
+CERT_DAYS = 825
+RENEW_BEFORE_SECONDS = 30 * 86400
+# NEVERDIE_* variables of the install passed on to the service (not the secret key:
+# the unit file is world readable; the app keeps its key in instance/secret_key).
+SERVICE_VARIABLES = ('NEVERDIE_CONFIG', 'NEVERDIE_DB', 'NEVERDIE_INSTANCE_DIR',
+                     'NEVERDIE_HOST', 'NEVERDIE_PORT', 'NEVERDIE_THREADS')
+PATH_VARIABLES = ('NEVERDIE_CONFIG', 'NEVERDIE_DB', 'NEVERDIE_INSTANCE_DIR')
+HSTS = 'max-age=31536000; includeSubDomains'
+# Mozilla "intermediate" TLS profile.
+CIPHERS = ('ECDHE-ECDSA-AES128-GCM-SHA256:ECDHE-RSA-AES128-GCM-SHA256:ECDHE-ECDSA-AES256-GCM-SHA384:'
+           'ECDHE-RSA-AES256-GCM-SHA384:ECDHE-ECDSA-CHACHA20-POLY1305:ECDHE-RSA-CHACHA20-POLY1305')
+PACKAGE_MANAGERS = (
+    ('apt-get', ['apt-get', 'install', '-y'], ['apt-get', 'update']),
+    ('dnf', ['dnf', 'install', '-y'], None),
+    ('yum', ['yum', 'install', '-y'], None),
+    ('zypper', ['zypper', '--non-interactive', 'install'], None),
+)
+
+
+class InstallError(Exception):
+    pass
+
+
+def say(message):
+    print('install: ' + message, flush=True)
+
+
+# --- pure helpers (unit tested) -------------------------------------------------
+
+def is_ip(name):
+    try:
+        ipaddress.ip_address(name)
+        return True
+    except ValueError:
+        return False
+
+
+def certificate_names(server_name):
+    """Names of the self-signed certificate: the server names, then localhost."""
+    names = []
+    for name in server_name.split() + ['localhost', '127.0.0.1', '::1']:
+        if name and name not in names:
+            names.append(name)
+    return names
+
+
+def main_name(server_name):
+    return server_name.split()[0]
+
+
+def listen_port(arguments):
+    """Port of a `listen` directive: 443, 0.0.0.0:443, [::]:443, *:443; 80 without one."""
+    address = arguments[0] if arguments else '80'
+    if address.startswith('unix:'):
+        return None
+    if address.isdigit():
+        return int(address)
+    port = address.rsplit(']:', 1)[1] if ']:' in address else (address.rsplit(':', 1)[1] if ':' in address else '')
+    return int(port) if port.isdigit() else 80
+
+
+def parse_servers(dump):
+    """Server blocks of `nginx -T` output, in order: {file, ports, default_ports, names}."""
+    servers, stack, buffer, current_file, server = [], [], '', None, None
+    for raw in dump.splitlines():
+        header = re.match(r'# configuration file (.+):\s*$', raw)
+        if header:
+            current_file, stack, buffer, server = header.group(1), [], '', None
+            continue
+        buffer += ' ' + raw.split('#', 1)[0]
+        while True:
+            match = re.search(r'[;{}]', buffer)
+            if not match:
+                break
+            statement, end, buffer = buffer[:match.start()].split(), match.group(), buffer[match.end():]
+            if end == '{':
+                name = statement[0] if statement else ''
+                if name == 'server' and not {'server', 'stream', 'upstream', 'mail'} & set(stack):
+                    server = {'file': current_file, 'ports': [], 'default_ports': [], 'names': []}
+                    servers.append(server)
+                stack.append(name)
+            elif end == '}':
+                if stack and stack.pop() == 'server' and 'server' not in stack:
+                    if server is not None and not server['ports']:
+                        server['ports'].append(80)  # no listen directive: port 80
+                    server = None
+            elif server is not None and stack and stack[-1] == 'server' and statement:
+                if statement[0] == 'listen':
+                    port = listen_port(statement[1:])
+                    if port and port not in server['ports']:
+                        server['ports'].append(port)
+                    if port and {'default_server', 'default'} & set(statement[2:]) \
+                            and port not in server['default_ports']:
+                        server['default_ports'].append(port)
+                elif statement[0] == 'server_name':
+                    server['names'].extend(name.lower() for name in statement[1:])
+    return servers
+
+
+def site_conflicts(servers, names, ports):
+    """(same-name conflicts [(file, name, port)], default sites {port: file}) among other sites."""
+    clashes, defaults = [], {}
+    for port in ports:
+        on_port = [server for server in servers if port in server['ports']]
+        for server in on_port:
+            for name in server['names']:
+                if name in names and (server['file'], name, port) not in clashes:
+                    clashes.append((server['file'], name, port))
+        flagged = [server for server in on_port if port in server['default_ports']]
+        if flagged or on_port:
+            defaults[port] = (flagged or on_port)[0]['file']
+    return clashes, defaults
+
+
+def subject_alt_names(names):
+    return ','.join(('IP:%s' if is_ip(name) else 'DNS:%s') % name for name in names)
+
+
+def parse_nginx_version(output):
+    """(1, 24, 0) from `nginx -v` output ("nginx version: nginx/1.24.0 (Ubuntu)"), or None."""
+    match = re.search(r'nginx/(\d+)\.(\d+)\.(\d+)', output or '')
+    return tuple(int(part) for part in match.groups()) if match else None
+
+
+def site_url(server_name, https_port):
+    name = main_name(server_name)
+    host = '[%s]' % name if ':' in name else name
+    return 'https://%s%s/' % (host, '' if https_port == 443 else ':%d' % https_port)
+
+
+def backend_url(host, port):
+    """Address nginx forwards /api to (the app listens on host:port)."""
+    if host in ('0.0.0.0', '', '*'):  # noqa: S104 (connecting to it)
+        host = '127.0.0.1'
+    elif host == '::':
+        host = '::1'
+    if ':' in host:
+        host = '[%s]' % host
+    return 'http://%s:%d' % (host, port)
+
+
+def _headers(indent, cache=None):
+    lines = ['add_header %s "%s" always;' % (name, value) for name, value in SECURITY_HEADERS.items()]
+    lines.append('add_header Strict-Transport-Security "%s" always;' % HSTS)
+    if cache:
+        lines.append('add_header Cache-Control "%s" always;' % cache)
+    return ''.join('%s%s\n' % (indent, line) for line in lines)
+
+
+def render_nginx(settings, certificate, key, nginx_version=None, ipv6=True):
+    """nginx site: HTTP redirected to HTTPS, the UI from WEB_ROOT, /api forwarded to the app."""
+    name = settings['server_name']
+    http_port, https_port = settings['http_port'], settings['https_port']
+    modern_http2 = nginx_version is None or nginx_version >= (1, 25, 1)
+    listen_http = ['listen %d;' % http_port] + (['listen [::]:%d;' % http_port] if ipv6 else [])
+    ssl_suffix = ' ssl' if modern_http2 else ' ssl http2'
+    listen_https = ['listen %d%s;' % (https_port, ssl_suffix)]
+    if ipv6:
+        listen_https.append('listen [::]:%d%s;' % (https_port, ssl_suffix))
+    if modern_http2:
+        listen_https.append('http2 on;')
+    redirect = 'https://$host%s$request_uri' % ('' if https_port == 443 else ':%d' % https_port)
+    backend = backend_url(settings['host'], settings['port'])
+    indent = ' ' * 8
+    return """\
+# Neverdie, written by scripts/install.py (make install): run it again rather than
+# editing this file, which it overwrites.
+
+server {
+%(listen_http)s
+    server_name %(name)s;
+    server_tokens off;
+
+    # Let's Encrypt HTTP challenge.
+    location /.well-known/acme-challenge/ {
+        root %(acme)s;
+    }
+
+    location / {
+        return 301 %(redirect)s;
+    }
+}
+
+server {
+%(listen_https)s
+    server_name %(name)s;
+    server_tokens off;
+
+    ssl_certificate %(certificate)s;
+    ssl_certificate_key %(key)s;
+    ssl_protocols TLSv1.2 TLSv1.3;
+    ssl_ciphers %(ciphers)s;
+    ssl_prefer_server_ciphers off;
+    ssl_session_timeout 1d;
+    ssl_session_cache shared:NeverdieTLS:10m;
+    ssl_session_tickets off;
+
+    client_max_body_size 1m;
+    gzip on;
+    gzip_types text/css application/javascript application/json image/svg+xml;
+
+    # The built UI (client/dist), copied by make install.
+    root %(web_root)s;
+    index index.html;
+
+    # The API: the app on %(backend)s (systemd service neverdie). It sends its own
+    # security headers. ^~: no regex location below applies to /api/ URLs.
+    location ^~ /api/ {
+        proxy_pass %(backend)s;
+        proxy_http_version 1.1;
+        proxy_set_header Host $host;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+        proxy_set_header X-Forwarded-Host $host;
+        proxy_read_timeout 60s;
+    }
+
+    location = /api {
+        return 404;
+    }
+
+    # File names of the build carry a hash of their content: cache them for good.
+    location ~* \\.(?:js|css)$ {
+        try_files $uri =404;
+        expires 1y;
+%(headers_immutable)s    }
+
+    location /media/ {
+        try_files $uri =404;
+        expires 1y;
+%(headers_immutable)s    }
+
+    # Everything else is a page of the single page application.
+    location / {
+        try_files $uri $uri/ /index.html;
+%(headers_page)s    }
+}
+""" % {
+        'listen_http': ''.join('    %s\n' % line for line in listen_http).rstrip('\n'),
+        'listen_https': ''.join('    %s\n' % line for line in listen_https).rstrip('\n'),
+        'name': name,
+        'acme': ACME_ROOT,
+        'redirect': redirect,
+        'certificate': certificate,
+        'key': key,
+        'ciphers': CIPHERS,
+        'web_root': WEB_ROOT,
+        'backend': backend,
+        'headers_immutable': _headers(indent, 'public, max-age=31536000, immutable'),
+        'headers_page': _headers(indent, 'no-cache'),
+    }
+
+
+def systemd_path(text):
+    """A path written as is in a unit file (WorkingDirectory=): only specifiers need escaping."""
+    if '\n' in text or '\r' in text:
+        raise InstallError('a value for the systemd service contains a line break: %r' % text)
+    return text.replace('%', '%%')
+
+
+def systemd_quote(text):
+    """A value inside double quotes in a unit file (Environment=, ExecStart=)."""
+    return systemd_path(text).replace('\\', '\\\\').replace('"', '\\"')
+
+
+def service_environment(environ, cwd):
+    """Environment of the service: behind a TLS proxy, plus the NEVERDIE_* settings of the install."""
+    env = {'NEVERDIE_COOKIE_SECURE': '1', 'NEVERDIE_TRUSTED_PROXIES': '1', 'PYTHONUNBUFFERED': '1'}
+    for name in SERVICE_VARIABLES:
+        value = environ.get(name, '').strip()
+        if value:
+            env[name] = os.path.abspath(os.path.join(cwd, value)) if name in PATH_VARIABLES else value
+    return env
+
+
+def render_service(user, python, env):
+    environment = ''.join('Environment="%s=%s"\n' % (name, systemd_quote(value)) for name, value in env.items())
+    return """\
+# Neverdie, written by scripts/install.py (make install).
+[Unit]
+Description=Neverdie server monitoring
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=%(user)s
+WorkingDirectory=%(root)s
+%(environment)sExecStart="%(python)s" "%(start)s"
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=full
+
+[Install]
+WantedBy=multi-user.target
+""" % {
+        'user': user,
+        'root': systemd_path(ROOT),
+        'environment': environment,
+        'python': systemd_quote(python),
+        'start': systemd_quote(os.path.join(ROOT, 'start.py')),
+    }
+
+
+def check_letsencrypt(settings):
+    for name in settings['server_name'].split():
+        if is_ip(name) or '.' not in name or name.endswith(('.local', '.localhost', '.lan', '.internal')):
+            raise InstallError('Let\'s Encrypt needs public domain names in install.server_name '
+                               '(NEVERDIE_SERVER_NAME), pointing to this machine; got %r. Use certificate: '
+                               'self-signed otherwise.' % name)
+    if settings['http_port'] != 80:
+        raise InstallError('Let\'s Encrypt checks the domain over HTTP on port 80: install.http_port must be 80.')
+
+
+# --- system actions --------------------------------------------------------------
+
+class Installer(object):
+    def __init__(self, dry_run=None):
+        self.dry_run = os.path.abspath(dry_run) if dry_run else None
+        if self.dry_run:
+            os.makedirs(self.dry_run, exist_ok=True)
+
+    def run(self, command, check=True, capture=False, **kwargs):
+        """Runs a command as this user."""
+        result = subprocess.run(command, text=True, capture_output=capture, **kwargs)
+        if check and result.returncode != 0:
+            details = ('\n' + (result.stderr or result.stdout).strip()) if capture else ''
+            raise InstallError('%s failed (exit %d)%s' % (shlex.join(command), result.returncode, details))
+        return result
+
+    def root(self, command, check=True, capture=False):
+        """Runs a command as root (through sudo); only printed in a dry run."""
+        if self.dry_run:
+            print('  would run: %s' % shlex.join(command))
+            return subprocess.CompletedProcess(command, 0, '', '')
+        prefix = [] if os.geteuid() == 0 else ['sudo']
+        return self.run(prefix + command, check=check, capture=capture)
+
+    def put(self, content, destination, mode='644'):
+        """Writes a root owned file; in a dry run, into the dry run directory."""
+        if self.dry_run:
+            path = os.path.join(self.dry_run, os.path.basename(destination))
+            with open(path, 'w', encoding='utf-8', newline='\n') as file:
+                file.write(content)
+            print('  would write %s (see %s)' % (destination, path))
+            return
+        with tempfile.NamedTemporaryFile('w', delete=False, encoding='utf-8', suffix='.neverdie') as file:
+            file.write(content)
+        try:
+            self.root(['install', '-D', '-m', mode, '-o', 'root', '-g', 'root', file.name, destination])
+        finally:
+            os.unlink(file.name)
+
+    def root_file_exists(self, path):
+        if self.dry_run:
+            return os.path.exists(path)
+        return self.root(['test', '-e', path], check=False).returncode == 0
+
+
+def find_program(name):
+    for path in (shutil.which(name), '/usr/sbin/' + name, '/usr/bin/' + name, '/sbin/' + name):
+        if path and os.path.isfile(path) and os.access(path, os.X_OK):
+            return path
+    return None
+
+
+def install_packages(installer, packages):
+    for manager, install, update in PACKAGE_MANAGERS:
+        if find_program(manager):
+            say('installing %s (%s)...' % (', '.join(packages), manager))
+            if update:
+                installer.root(update)
+            installer.root(install + packages)
+            return
+    raise InstallError('no known package manager: install %s yourself, then run again.' % ', '.join(packages))
+
+
+def ensure_program(installer, name, package=None):
+    path = find_program(name)
+    if not path:
+        if installer.dry_run:
+            print('  would install the %s package' % (package or name))
+            return name
+        install_packages(installer, [package or name])
+        path = find_program(name)
+        if not path:
+            raise InstallError('%s is still missing after installing %s.' % (name, package or name))
+    return path
+
+
+def ipv6_available():
+    if not socket.has_ipv6:
+        return False
+    try:
+        socket.socket(socket.AF_INET6, socket.SOCK_STREAM).close()
+        return True
+    except OSError:
+        return False
+
+
+HOST_NAME = re.compile(r'^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*$')
+
+
+def machine_names(hostname_output=None):
+    """Default server names: the names of this machine and its IPv4 addresses (not loopback)."""
+    names = []
+    for name in (socket.getfqdn(), socket.gethostname()):
+        name = (name or '').lower()
+        if name and HOST_NAME.match(name) and name not in names and name != 'localhost':
+            names.append(name)
+    if hostname_output is None:
+        try:
+            hostname_output = subprocess.run(['hostname', '-I'], capture_output=True, text=True).stdout
+        except OSError:
+            hostname_output = ''
+    for address in hostname_output.split():
+        try:
+            ip = ipaddress.ip_address(address)
+        except ValueError:
+            continue
+        if ip.version == 4 and not ip.is_loopback and not ip.is_link_local and str(ip) not in names:
+            names.append(str(ip))
+    return names or ['localhost']
+
+
+def read_settings(python):
+    result = subprocess.run([python, '-m', 'server.settings.config'], cwd=ROOT, capture_output=True, text=True)
+    if result.returncode != 0:
+        raise InstallError((result.stderr or result.stdout).strip())
+    settings = json.loads(result.stdout.strip().splitlines()[-1])
+    if not settings['server_name']:
+        settings['server_name'] = ' '.join(machine_names())
+        say('install.server_name is not set: serving %s (the names and addresses of this machine).'
+            % settings['server_name'].replace(' ', ', '))
+    if settings['http_port'] == settings['https_port']:
+        raise InstallError('install.http_port and install.https_port must differ.')
+    if settings['port'] in (settings['http_port'], settings['https_port']):
+        raise InstallError('server.port (%d) is the port of the app behind nginx: it must differ from '
+                           'install.http_port and install.https_port.' % settings['port'])
+    return settings
+
+
+def client_dependencies_outdated(client=CLIENT):
+    """No client/node_modules, or package-lock.json changed since npm installed them (an update)."""
+    installed = os.path.join(client, 'node_modules', '.package-lock.json')
+    try:
+        return os.path.getmtime(os.path.join(client, 'package-lock.json')) > os.path.getmtime(installed)
+    except OSError:
+        return True
+
+
+def build_ui(installer, skip):
+    index = os.path.join(DIST, 'index.html')
+    if skip or installer.dry_run:
+        if not os.path.isfile(index) and not installer.dry_run:
+            raise InstallError('client/dist/index.html is missing: build the UI (drop --skip-build).')
+        return
+    npm = shutil.which('npm')
+    if not npm:
+        if os.path.isfile(index):
+            say('npm not found: using the UI already built in client/dist.')
+            return
+        raise InstallError('npm not found: install Node.js 22 or later to build the UI '
+                           '(or copy a built client/dist and use --skip-build).')
+    from serve import check_node
+    check_node()
+    if client_dependencies_outdated():
+        say('installing the client dependencies (npm ci)...')
+        installer.run([npm, 'ci', '--no-audit', '--no-fund'], cwd=CLIENT)
+    say('building the UI (npm run build)...')
+    installer.run([npm, 'run', 'build'], cwd=CLIENT)
+    if not os.path.isfile(index):
+        raise InstallError('the UI build did not produce client/dist/index.html.')
+
+
+def publish_ui(installer):
+    say('copying the UI to %s...' % WEB_ROOT)
+    staging, old = WEB_ROOT + '.new', WEB_ROOT + '.old'
+    installer.root(['rm', '-rf', staging, old])
+    installer.root(['install', '-d', '-m', '755', os.path.dirname(WEB_ROOT)])
+    installer.root(['cp', '-r', DIST, staging])
+    installer.root(['chown', '-R', 'root:root', staging])
+    installer.root(['chmod', '-R', 'u=rwX,go=rX', staging])
+    if installer.root_file_exists(WEB_ROOT):
+        installer.root(['mv', WEB_ROOT, old])
+    installer.root(['mv', staging, WEB_ROOT])
+    installer.root(['rm', '-rf', old])
+
+
+def self_signed_certificate(installer, names, renew=False):
+    """Creates (or renews) the self-signed certificate; returns (certificate, key) paths."""
+    certificate, key, names_file = TLS_DIR + '/neverdie.crt', TLS_DIR + '/neverdie.key', TLS_DIR + '/names.json'
+    if not renew and not installer.dry_run and certificate_is_current(installer, certificate, names_file, names):
+        say('keeping the self-signed certificate of %s (%s).' % (', '.join(names), certificate))
+        return certificate, key
+    openssl = ensure_program(installer, 'openssl')
+    say('creating a self-signed certificate for %s (valid %d days)...' % (', '.join(names), CERT_DAYS))
+    with tempfile.TemporaryDirectory() as work:
+        os.chmod(work, 0o700)
+        crt_tmp, key_tmp = os.path.join(work, 'neverdie.crt'), os.path.join(work, 'neverdie.key')
+        create_certificate(installer, openssl, names, crt_tmp, key_tmp)
+        names_tmp = os.path.join(work, 'names.json')
+        with open(names_tmp, 'w', encoding='utf-8') as file:
+            json.dump(names, file)
+        installer.root(['install', '-d', '-m', '755', TLS_DIR])
+        installer.root(['install', '-m', '644', '-o', 'root', '-g', 'root', crt_tmp, certificate])
+        installer.root(['install', '-m', '600', '-o', 'root', '-g', 'root', key_tmp, key])
+        installer.root(['install', '-m', '644', '-o', 'root', '-g', 'root', names_tmp, names_file])
+    return certificate, key
+
+
+def create_certificate(installer, openssl, names, certificate, key):
+    command = [openssl, 'req', '-x509', '-newkey', 'rsa:3072', '-sha256', '-days', str(CERT_DAYS), '-nodes',
+               '-keyout', key, '-out', certificate, '-subj', '/CN=Neverdie',
+               '-addext', 'subjectAltName=' + subject_alt_names(names),
+               '-addext', 'basicConstraints=critical,CA:FALSE',
+               '-addext', 'keyUsage=critical,digitalSignature,keyEncipherment',
+               '-addext', 'extendedKeyUsage=serverAuth']
+    if installer.dry_run:
+        print('  would run: %s' % shlex.join(command))
+        return
+    installer.run(command, capture=True)
+
+
+def certificate_is_current(installer, certificate, names_file, names):
+    """The certificate exists, has these names and is valid for 30 more days."""
+    try:
+        with open(names_file, encoding='utf-8') as file:
+            if json.load(file) != names:
+                return False
+    except (OSError, ValueError):
+        return False
+    openssl = find_program('openssl')
+    return bool(openssl) and subprocess.run(
+        [openssl, 'x509', '-checkend', str(RENEW_BEFORE_SECONDS), '-noout', '-in', certificate],
+        capture_output=True).returncode == 0
+
+
+def nginx_layout(installer):
+    """(site file, enabled link or None): Debian style sites-available, else conf.d."""
+    if os.path.isdir(SITES_AVAILABLE) and os.path.isdir(SITES_ENABLED):
+        return SITES_AVAILABLE + '/neverdie', SITES_ENABLED + '/neverdie'
+    return CONF_D + '/neverdie.conf', None
+
+
+def disable_stock_default_site(installer, settings):
+    """Debian's default site also answers on port 80: turn it off (uninstall turns it back on)."""
+    link = SITES_ENABLED + '/default'
+    if settings['http_port'] != 80 or not os.path.islink(link):
+        return False
+    if os.path.realpath(link) != os.path.realpath(SITES_AVAILABLE + '/default'):
+        return False
+    say('turning off the stock nginx default site (it answers on port 80 too).')
+    installer.root(['rm', '-f', link])
+    return True
+
+
+def apply_nginx(installer, nginx):
+    result = installer.root([nginx, '-t'], capture=not installer.dry_run)
+    # nginx -t passes with warnings that matter, such as "conflicting server name ... ignored".
+    for line in (result.stderr or '').splitlines():
+        if '[warn]' in line:
+            say('nginx warning: %s' % line.split('[warn]', 1)[1].strip())
+    if installer.dry_run or subprocess.run(['systemctl', 'is-active', '--quiet', 'nginx']).returncode == 0:
+        installer.root(['systemctl', 'reload', 'nginx'])
+    else:
+        installer.root(['systemctl', 'enable', '--now', 'nginx'])
+
+
+def write_site(installer, nginx, settings, certificate, key, site, link, version):
+    installer.put(render_nginx(settings, certificate, key, version, ipv6_available()), site)
+    if link:
+        installer.root(['ln', '-sfn', site, link])
+    apply_nginx(installer, nginx)
+
+
+def letsencrypt_certificate(installer, settings):
+    name = main_name(settings['server_name'])
+    live = '%s/%s' % (LETSENCRYPT_LIVE, name)
+    certificate, key = live + '/fullchain.pem', live + '/privkey.pem'
+    if installer.root_file_exists(certificate):
+        say('using the Let\'s Encrypt certificate of %s (certbot renews it).' % name)
+        return certificate, key, False
+    return certificate, key, True
+
+
+def request_letsencrypt(installer, settings):
+    certbot = ensure_program(installer, 'certbot')
+    names = settings['server_name'].split()
+    say('Let\'s Encrypt certificate of %s (certbot may ask you to accept its terms the first time)...'
+        % ', '.join(names))
+    # --keep-until-expiring: nothing to do while the certificate is current; --expand: add new names.
+    command = [certbot, 'certonly', '--webroot', '-w', ACME_ROOT, '--cert-name', names[0],
+               '--keep-until-expiring', '--expand', '--deploy-hook', 'systemctl reload nginx']
+    for name in names:
+        command += ['-d', name]
+    command += ['--email', settings['email']] if settings['email'] else ['--register-unsafely-without-email']
+    installer.root(command)
+
+
+def install_service(installer, python):
+    user = getpass.getuser()
+    env = service_environment(os.environ, os.getcwd())
+    installer.put(render_service(user, python, env), SERVICE_FILE)
+    installer.root(['systemctl', 'daemon-reload'])
+    installer.root(['systemctl', 'enable', SERVICE_NAME])
+    installer.root(['systemctl', 'restart', SERVICE_NAME])
+    return user
+
+
+def wait_for(url, expected, timeout, host=None, insecure=False):
+    """Status of the first answer of `url` among `expected`, or the last error after `timeout` seconds."""
+    context = ssl._create_unverified_context() if insecure else None  # noqa: S323 (own self-signed site)
+    request = urllib.request.Request(url, headers={'Host': host} if host else {})  # noqa: S310 (http/https only)
+    deadline = time.monotonic() + timeout
+    last = None
+    while time.monotonic() < deadline:
+        try:
+            with urllib.request.urlopen(request, timeout=5, context=context) as response:  # noqa: S310
+                last = response.status
+        except urllib.error.HTTPError as error:
+            last = error.code
+        except (urllib.error.URLError, OSError) as error:
+            last = str(error)
+        if last in expected:
+            return last
+        time.sleep(1)
+    return last
+
+
+def check_site(installer, settings, service):
+    if installer.dry_run:
+        return
+    backend = backend_url(settings['host'], settings['port'])
+    if service:
+        status = wait_for(backend + '/api/auth', (401,), 60)
+        if status != 401 or subprocess.run(['systemctl', 'is-active', '--quiet', SERVICE_NAME]).returncode:
+            raise InstallError('the app did not start (%s). See: journalctl -u %s -n 50' % (status, SERVICE_NAME))
+        say('the app answers on %s.' % backend)
+    https = 'https://127.0.0.1:%d' % settings['https_port']
+    host = main_name(settings['server_name'])
+    page = wait_for(https + '/', (200,), 30, host=host, insecure=True)
+    api = wait_for(https + '/api/auth', (401,), 30, host=host, insecure=True)
+    if page != 200 or (service and api != 401):
+        raise InstallError('nginx does not serve the site as expected (page: %s, API: %s). '
+                           'See: sudo nginx -t; journalctl -u nginx' % (page, api))
+    say('nginx serves the UI and forwards the API over HTTPS.')
+
+
+def allow_proxy_with_selinux(installer):
+    """With SELinux enforcing (Fedora, RHEL...), nginx may only connect to the app once allowed."""
+    getenforce = find_program('getenforce')
+    if not getenforce or installer.run([getenforce], check=False, capture=True).stdout.strip() != 'Enforcing':
+        return
+    say('SELinux: allowing nginx to connect to the app (httpd_can_network_connect).')
+    installer.root(['setsebool', '-P', 'httpd_can_network_connect', '1'])
+
+
+def check_other_sites(installer, nginx, settings, site, link):
+    """Stops on another nginx site with one of our names (nginx would serve only one of them).
+
+    nginx picks the site whose server_name matches the name of the link, else the default
+    site of the port (marked default_server, or the first one loaded).
+    """
+    servers = nginx_servers(installer, nginx)
+    ours = {site, link, os.path.realpath(site)}
+    others = [server for server in servers if server['file'] not in ours]
+    clashes, _ = site_conflicts(others, settings['server_name'].split(),
+                                (settings['http_port'], settings['https_port']))
+    if clashes:
+        raise InstallError('other nginx sites already answer to the names of Neverdie, so nginx would show '
+                           'only one of them:\n%s\nRemove these names from those sites, or set install.server_name '
+                           '(NEVERDIE_SERVER_NAME) to other names.'
+                           % '\n'.join('  %s: %s on port %d' % clash for clash in clashes))
+
+
+def nginx_servers(installer, nginx):
+    dump = installer.root([nginx, '-T'], check=False, capture=True)
+    if installer.dry_run or dump.returncode != 0:
+        return []
+    return parse_servers(dump.stdout)
+
+
+def default_site_notes(installer, nginx, settings, site, link):
+    """Ports whose default site (for links with other names) is another site, once ours is written."""
+    ours = {site, link, os.path.realpath(site)}
+    names = settings['server_name'].split()
+    _, defaults = site_conflicts(nginx_servers(installer, nginx), names,
+                                 (settings['http_port'], settings['https_port']))
+    return ['port %d: a link with a name or address other than %s shows %s (the default nginx site of '
+            'that port). Add that name to install.server_name to reach Neverdie with it.'
+            % (port, ', '.join(names), path)
+            for port, path in sorted(defaults.items()) if path not in ours]
+
+
+def install(args):
+    installer = Installer(args.dry_run)
+    python = ensure_venv()
+    settings = read_settings(python)
+    if settings['certificate'] == 'letsencrypt':
+        check_letsencrypt(settings)
+    if settings['host'] not in ('127.0.0.1', 'localhost', '::1'):
+        say('warning: server.host is %s, so the app is also reachable without nginx (and without HTTPS) '
+            'on port %d. 127.0.0.1 is recommended behind nginx.' % (settings['host'], settings['port']))
+    build_ui(installer, args.skip_build)
+
+    nginx = ensure_program(installer, 'nginx')
+    version = None
+    if not installer.dry_run:
+        version = parse_nginx_version(installer.run([nginx, '-v'], capture=True).stderr)
+    site, link = nginx_layout(installer)
+    publish_ui(installer)
+    installer.root(['install', '-d', '-m', '755', ACME_ROOT])
+    disabled_default = disable_stock_default_site(installer, settings)
+    check_other_sites(installer, nginx, settings, site, link)
+    allow_proxy_with_selinux(installer)
+
+    names = certificate_names(settings['server_name'])
+    if settings['certificate'] == 'letsencrypt':
+        certificate, key, missing = letsencrypt_certificate(installer, settings)
+        if missing:
+            # nginx needs a certificate to start: a self-signed one until Let's Encrypt answers.
+            temporary = self_signed_certificate(installer, names)
+            write_site(installer, nginx, settings, temporary[0], temporary[1], site, link, version)
+        # New certificate, or new names; certbot keeps a current one as it is.
+        request_letsencrypt(installer, settings)
+    else:
+        certificate, key = self_signed_certificate(installer, names, renew=args.renew_certificate)
+
+    say('writing the nginx site %s...' % site)
+    write_site(installer, nginx, settings, certificate, key, site, link, version)
+    notes = default_site_notes(installer, nginx, settings, site, link)
+
+    user = None
+    if not args.no_service:
+        say('installing the systemd service %s...' % SERVICE_NAME)
+        user = install_service(installer, python)
+
+    state = {
+        'site': site,
+        'link': link,
+        'web_root': WEB_ROOT,
+        'service': None if args.no_service else SERVICE_FILE,
+        'certificate': settings['certificate'],
+        'server_name': settings['server_name'],
+        # The settings written into the nginx site: make update checks they did not change.
+        'host': settings['host'],
+        'port': settings['port'],
+        'http_port': settings['http_port'],
+        'https_port': settings['https_port'],
+        # Keep the record of a default site turned off by an earlier install.
+        'disabled_default_site': disabled_default or read_state().get('disabled_default_site', False),
+    }
+    installer.put(json.dumps(state, indent=2) + '\n', STATE)
+    check_site(installer, settings, not args.no_service)
+
+    url = site_url(settings['server_name'], settings['https_port'])
+    if installer.dry_run:
+        say('dry run: nothing was changed. Files written to %s.' % installer.dry_run)
+        return 0
+    print()
+    print('Neverdie is installed: %s' % url)
+    print('* nginx serves it for: %s' % ', '.join(settings['server_name'].split()))
+    for note in notes:
+        print('* Other sites on this nginx, %s' % note)
+    if settings['certificate'] == 'self-signed':
+        print('* The certificate is self-signed: browsers warn about it until you trust %s/neverdie.crt '
+              'on the computers that open the site.' % TLS_DIR)
+    if user:
+        print('* The app runs as %s (systemd service %s): journalctl -u %s -f' % (user, SERVICE_NAME, SERVICE_NAME))
+    print('* Create a user if needed: python scripts/run.py manage.py create-user <username>')
+    print('* To update Neverdie later, keeping this configuration: make update')
+    return 0
+
+
+# Settings written into the nginx site or the certificate: make install applies their changes.
+SITE_SETTINGS = ('server_name', 'certificate', 'http_port', 'https_port')
+# Address of the app, which nginx forwards /api to: the app and nginx must agree on it.
+BACKEND_SETTINGS = ('host', 'port')
+
+
+def changed_settings(state, settings, names):
+    """Settings among `names` that differ from those recorded by make install (older installs
+    did not record them all: those are not compared)."""
+    return [name for name in names if name in state and state[name] != settings[name]]
+
+
+def pull_sources(installer):
+    """git pull --ff-only of the checkout. True when it brought a new version."""
+    if not os.path.isdir(os.path.join(ROOT, '.git')):
+        say('not a git checkout: updating from the files as they are.')
+        return False
+    git = shutil.which('git')
+    if not git:
+        say('git not found: updating from the files as they are.')
+        return False
+    if installer.run([git, 'rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{upstream}'],
+                     check=False, capture=True, cwd=ROOT).returncode != 0:
+        say('the branch has no upstream to pull from: updating from the files as they are.')
+        return False
+    if installer.dry_run:
+        print('  would run: git pull --ff-only')
+        return False
+    before = installer.run([git, 'rev-parse', 'HEAD'], capture=True, cwd=ROOT).stdout.strip()
+    say('pulling the new version (git pull --ff-only)...')
+    result = installer.run([git, 'pull', '--ff-only'], check=False, capture=True, cwd=ROOT)
+    if result.returncode != 0:
+        raise InstallError('git pull --ff-only failed:\n%s\nLocal changes to tracked files (etc/neverdie.yml '
+                           'included) can block it: keep your settings in a file outside the checkout '
+                           '(NEVERDIE_CONFIG), or commit them, then run make update again.'
+                           % (result.stderr or result.stdout).strip())
+    after = installer.run([git, 'rev-parse', 'HEAD'], capture=True, cwd=ROOT).stdout.strip()
+    if after == before:
+        say('already at the latest version (%s).' % after[:12])
+        return False
+    say('updated %s..%s.' % (before[:12], after[:12]))
+    return True
+
+
+def update(args):
+    installer = Installer(args.dry_run)
+    state = read_state()
+    if not state:
+        raise InstallError('Neverdie is not installed here (%s not found): run make install first.' % STATE)
+    if not args.no_pull and pull_sources(installer):
+        # The new version may come with a new version of this script: let it go on.
+        say('going on with the updated scripts...')
+        sys.stdout.flush()
+        os.execv(sys.executable, [sys.executable, os.path.abspath(__file__)] + args.argv + ['--no-pull'])
+
+    python = ensure_venv()
+    settings = read_settings(python)
+    moved = changed_settings(state, settings, BACKEND_SETTINGS)
+    if moved:
+        # The restarted app would listen where nginx does not forward the API.
+        raise InstallError('the address of the app changed since make install (%s): run make install to '
+                           'apply it to nginx too.' % ', '.join('server.%s' % name for name in moved))
+    build_ui(installer, args.skip_build)
+    publish_ui(installer)
+    service = bool(state.get('service'))
+    if service:
+        say('restarting the systemd service %s...' % SERVICE_NAME)
+        installer.root(['systemctl', 'restart', SERVICE_NAME])
+    check_site(installer, settings, service)
+
+    pending = changed_settings(state, settings, SITE_SETTINGS)
+    if installer.dry_run:
+        say('dry run: nothing was changed.')
+    else:
+        print()
+        print('Neverdie is updated: %s' % site_url(state.get('server_name') or settings['server_name'],
+                                                  state.get('https_port', settings['https_port'])))
+        print('* Kept as installed: the nginx site, the certificate, the systemd service and the configuration.')
+    if pending:
+        say('note: the configuration changed since make install (%s); make update does not apply it to '
+            'nginx: run make install for that.' % ', '.join('install.%s' % name for name in pending))
+    return 0
+
+
+def read_state():
+    try:
+        with open(STATE, encoding='utf-8') as file:
+            return json.load(file)
+    except (OSError, ValueError):
+        return {}
+
+
+def uninstall(args):
+    installer = Installer(args.dry_run)
+    state = read_state()
+    if not state:
+        say('nothing to remove: %s not found (Neverdie was not installed with make install).' % STATE)
+        return 0
+    if state.get('service'):
+        say('stopping and removing the systemd service %s...' % SERVICE_NAME)
+        installer.root(['systemctl', 'disable', '--now', SERVICE_NAME], check=False)
+        installer.root(['rm', '-f', SERVICE_FILE])
+        installer.root(['systemctl', 'daemon-reload'])
+    say('removing the nginx site...')
+    for path in (state.get('link'), state.get('site')):
+        if path and path.startswith('/etc/nginx/') and 'neverdie' in path:
+            installer.root(['rm', '-f', path])
+    if state.get('disabled_default_site') and os.path.exists(SITES_AVAILABLE + '/default'):
+        say('turning the stock nginx default site back on.')
+        installer.root(['ln', '-sfn', SITES_AVAILABLE + '/default', SITES_ENABLED + '/default'])
+    nginx = find_program('nginx')
+    if nginx:
+        apply_nginx(installer, nginx)
+    say('removing %s...' % WEB_ROOT)
+    installer.root(['rm', '-rf', WEB_ROOT])
+    installer.root(['rm', '-f', STATE])
+    say('done. Kept: the certificates (%s, %s), nginx, the database and .venv.' % (TLS_DIR, LETSENCRYPT_LIVE))
+    return 0
+
+
+def main(argv=None):
+    parser = argparse.ArgumentParser(description='Install Neverdie behind nginx with HTTPS (Linux, systemd)')
+    parser.add_argument('--dry-run', metavar='DIR', help='write the files to DIR and print the commands, change nothing')
+    parser.add_argument('--skip-build', action='store_true', help='use the UI already built in client/dist')
+    parser.add_argument('--no-service', action='store_true', help='do not install the systemd service of the app')
+    parser.add_argument('--renew-certificate', action='store_true', help='create a new self-signed certificate')
+    parser.add_argument('--update', action='store_true',
+                        help='update an installed Neverdie (git pull, .venv, UI, service restart), '
+                             'keeping its configuration')
+    parser.add_argument('--no-pull', action='store_true', help='with --update: do not run git pull')
+    parser.add_argument('--uninstall', action='store_true', help='remove what make install added')
+    argv = list(sys.argv[1:] if argv is None else argv)
+    args = parser.parse_args(argv)
+    args.argv = argv
+    if args.update and args.uninstall:
+        parser.error('--update and --uninstall cannot be used together')
+
+    if not args.dry_run:
+        if not sys.platform.startswith('linux'):
+            sys.exit('install: make install sets up nginx and systemd on Linux. '
+                     'Use --dry-run DIR to see the files it would write.')
+        if os.geteuid() == 0:
+            sys.exit('install: run it as the user that will run Neverdie, not as root: it asks for sudo when needed.')
+    try:
+        if args.uninstall:
+            return uninstall(args)
+        return update(args) if args.update else install(args)
+    except InstallError as error:
+        sys.exit('install: %s' % error)
+
+
+if __name__ == '__main__':
+    sys.exit(main())

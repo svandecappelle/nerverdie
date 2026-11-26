@@ -11,8 +11,8 @@ export const STORAGE_STATUS = {
   file_bytes: 52 * MB,
   free_bytes: 4 * MB,
   samples: 86_400,
-  oldest: '2026-11-22 10:00:00',
-  newest: '2026-11-25 10:00:00',
+  oldest: '2026-11-22T10:00:00+05:30',
+  newest: '2026-11-25T10:00:00+05:30',
   min_limit_mb: 1,
   max_limit_mb: 1_048_576,
 };
@@ -28,9 +28,9 @@ export const SECURITY_STATUS = {
   ],
   last_day: { success: 14, failure: 6, locked: 2, throttled: 1 },
   recent: [
-    { time: '2026-11-25 10:02:00', username: 'eve', address: '203.0.113.7', outcome: 'locked' },
-    { time: '2026-11-25 10:01:00', username: 'eve', address: '203.0.113.7', outcome: 'failure' },
-    { time: '2026-11-25 10:00:00', username: 'admin', address: '127.0.0.1', outcome: 'success' },
+    { time: '2026-11-25T10:02:00+05:30', username: 'eve', address: '203.0.113.7', outcome: 'locked' },
+    { time: '2026-11-25T10:01:00+05:30', username: 'eve', address: '203.0.113.7', outcome: 'failure' },
+    { time: '2026-11-25T10:00:00+05:30', username: 'admin', address: '127.0.0.1', outcome: 'success' },
   ],
 };
 
@@ -59,14 +59,16 @@ export const API_FIXTURES: Record<string, unknown> = {
   network: { eth0: { incoming: { bytes: '1.50M' }, outgoing: { bytes: '512.00K' } } },
 };
 
-/** Local `YYYY-MM-DD HH:MM:SS`, like the server dates. */
+/**
+ * The mocked server runs in UTC+05:30, a time zone other than the browser's: its dates must be
+ * placed by their UTC offset, not read as browser-local clock times.
+ */
+const SERVER_OFFSET = '+05:30';
+const SERVER_OFFSET_MS = (5 * 60 + 30) * 60_000;
+
+/** ISO 8601 date with the UTC offset of the server, like the server dates. */
 function serverDate(time: number): string {
-  const d = new Date(time);
-  const pad = (n: number) => String(n).padStart(2, '0');
-  return (
-    `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ` +
-    `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`
-  );
+  return new Date(time + SERVER_OFFSET_MS).toISOString().slice(0, 19) + SERVER_OFFSET;
 }
 
 /** Values of each history metric at time t. */

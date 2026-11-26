@@ -105,8 +105,8 @@ def test_status_api(logged_client):
     assert status['samples'] == 10
     assert status['used_bytes'] > 0
     assert status['file_bytes'] > 0
-    assert status['oldest'] == '2026-01-01 00:00:00'
-    assert status['newest'] == '2026-01-01 00:00:27'
+    assert status['oldest'] == datetime.datetime(2026, 1, 1).astimezone().isoformat()
+    assert status['newest'] == datetime.datetime(2026, 1, 1, 0, 0, 27).astimezone().isoformat()
 
 
 def test_update_api_applies_the_limit(logged_client):

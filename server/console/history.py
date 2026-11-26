@@ -26,7 +26,15 @@ METRICS = ('cpu',) + tuple(MEASURES)
 
 
 def _format(moment):
+    """A local datetime as stored in the database (no time zone): for queries only."""
     return moment.strftime(DATE_FORMAT)
+
+
+def json_date(moment):
+    """A local datetime as sent by the API: ISO 8601 with the UTC offset of the server,
+    such as 2026-11-26T03:19:29+01:00, so that a browser in another time zone places it right.
+    """
+    return moment.astimezone().isoformat(timespec='seconds')
 
 
 def _from_epoch(seconds):
@@ -41,7 +49,7 @@ class History:
         At most about `points` entries are returned: over long ranges the
         samples are averaged by time buckets of `step` seconds. Returns
         {'step': seconds, 'from': date, 'to': date, 'samples': [
-            {'date': 'YYYY-MM-DD HH:MM:SS', '<serie>': value, ...}, ...]}
+            {'date': 'YYYY-MM-DDTHH:MM:SS+HH:MM', '<serie>': value, ...}, ...]}
         oldest first, where the series are cpu0, cpu1... for 'cpu',
         used / swap for 'memory' and incoming / outgoing (bytes/s) for
         'network'.
@@ -83,7 +91,7 @@ class History:
         for moment, name, average in db.execute_sql(query, params):
             entry = entries.get(moment)
             if entry is None:
-                entry = entries[moment] = {'date': _format(_from_epoch(moment))}
+                entry = entries[moment] = {'date': json_date(_from_epoch(moment))}
                 samples.append(entry)
             entry[names[name] if names else name] = round(average, 2)
-        return {'step': step, 'from': _format(start), 'to': _format(end), 'samples': samples}
+        return {'step': step, 'from': json_date(start), 'to': json_date(end), 'samples': samples}

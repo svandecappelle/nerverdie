@@ -34,10 +34,27 @@ def login_required(f):
     return decorated_function
 
 
-def flaskrun(app, default_host="127.0.0.1", default_port="5000", default_threads="8"):
+def server_settings(argv=None):
+    """Host, port and threads: command line first, then server.settings.config."""
+    from server.settings import config
+
+    parser = optparse.OptionParser(
+        epilog="Without an option, the value comes from NEVERDIE_HOST / NEVERDIE_PORT / "
+               "NEVERDIE_THREADS, then from the configuration file (NEVERDIE_CONFIG or etc/neverdie.yml).")
+    parser.add_option("-H", "--host", help="Interface to listen on [default %s]" % config.SETTINGS['host'][3])
+    parser.add_option("-P", "--port", help="Port to listen on [default %s]" % config.SETTINGS['port'][3])
+    parser.add_option("-t", "--threads", help="Number of request threads [default %s]" % config.SETTINGS['threads'][3])
+    options, _ = parser.parse_args(argv)
+    try:
+        return config.load({'host': options.host, 'port': options.port, 'threads': options.threads})
+    except config.ConfigError as error:
+        parser.error(str(error))
+
+
+def flaskrun(app):
     """
     Takes a flask.Flask instance and serves it with the waitress WSGI
-    server. Parses command-line flags to configure it.
+    server, on the address and port of `server_settings()`.
 
     Flask's development server and its interactive debugger are
     deliberately not used: the debugger allows arbitrary code execution
@@ -48,22 +65,7 @@ def flaskrun(app, default_host="127.0.0.1", default_port="5000", default_threads
     from server.daemon import Daemon
     from server.storage.main import Datastore
 
-    # Set up the command-line options
-    parser = optparse.OptionParser()
-    parser.add_option("-H", "--host",
-                      help="Interface to listen on " +
-                           "[default %s]" % default_host,
-                      default=default_host)
-    parser.add_option("-P", "--port",
-                      help="Port to listen on " +
-                           "[default %s]" % default_port,
-                      default=default_port)
-    parser.add_option("-t", "--threads",
-                      help="Number of request threads " +
-                           "[default %s]" % default_threads,
-                      default=default_threads)
-
-    options, _ = parser.parse_args()
+    settings = server_settings()
 
     Datastore()
     daemon = Daemon()
@@ -71,8 +73,8 @@ def flaskrun(app, default_host="127.0.0.1", default_port="5000", default_threads
 
     serve(
         app,
-        host=options.host,
-        port=int(options.port),
-        threads=int(options.threads),
+        host=settings['host'],
+        port=settings['port'],
+        threads=settings['threads'],
         ident='neverdie',
     )

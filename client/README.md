@@ -16,7 +16,7 @@ npm ci
 
 | Command          | What it does                                                                    |
 | ---------------- | ------------------------------------------------------------------------------- |
-| `npm start`      | Dev server on http://localhost:4200, proxies `/api` to Flask on `127.0.0.1:5000` (`proxy.conf.json`) |
+| `npm start`      | Dev server on http://localhost:4200, proxies `/api` to Flask on `127.0.0.1:5000`, or `NEVERDIE_API_URL` (`proxy.conf.mjs`) |
 | `npm run build`  | Production build into `dist/` (no `browser/` sub-folder, served as is by Flask) |
 | `npm test`       | Unit tests (Vitest, through `ng test`)                                          |
 | `npm run lint`   | ESLint (angular-eslint)                                                         |

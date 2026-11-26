@@ -49,8 +49,10 @@ describe('AuthenticationService', () => {
     const until = firstValueFrom(service.login('admin', 'nope'));
     http
       .expectOne('/api/auth/login')
-      .flush({ error: 'locked', locked_until: '2026-11-25 10:15:00' }, { status: 423, statusText: 'Locked' });
-    expect(await until).toMatch(/^This account is locked after too many failed logins\. Retry after .*10.15/);
+      .flush({ error: 'locked', locked_until: '2026-11-25T10:15:00+01:00' }, { status: 423, statusText: 'Locked' });
+    // Shown in the time zone of the browser.
+    const local = new Date('2026-11-25T09:15:00Z').toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    expect(await until).toBe(`This account is locked after too many failed logins. Retry after ${local}.`);
 
     const forever = firstValueFrom(service.login('admin', 'nope'));
     http.expectOne('/api/auth/login').flush({ error: 'locked', locked_until: null }, { status: 423, statusText: 'Locked' });
