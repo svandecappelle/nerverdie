@@ -96,12 +96,80 @@ def is_ip(name):
 
 
 def certificate_names(server_name):
-    """Names of the self-signed certificate: the server name, then localhost."""
+    """Names of the self-signed certificate: the server names, then localhost."""
     names = []
-    for name in (server_name, 'localhost', '127.0.0.1', '::1'):
+    for name in server_name.split() + ['localhost', '127.0.0.1', '::1']:
         if name and name not in names:
             names.append(name)
     return names
+
+
+def main_name(server_name):
+    return server_name.split()[0]
+
+
+def listen_port(arguments):
+    """Port of a `listen` directive: 443, 0.0.0.0:443, [::]:443, *:443; 80 without one."""
+    address = arguments[0] if arguments else '80'
+    if address.startswith('unix:'):
+        return None
+    if address.isdigit():
+        return int(address)
+    port = address.rsplit(']:', 1)[1] if ']:' in address else (address.rsplit(':', 1)[1] if ':' in address else '')
+    return int(port) if port.isdigit() else 80
+
+
+def parse_servers(dump):
+    """Server blocks of `nginx -T` output, in order: {file, ports, default_ports, names}."""
+    servers, stack, buffer, current_file, server = [], [], '', None, None
+    for raw in dump.splitlines():
+        header = re.match(r'# configuration file (.+):\s*$', raw)
+        if header:
+            current_file, stack, buffer, server = header.group(1), [], '', None
+            continue
+        buffer += ' ' + raw.split('#', 1)[0]
+        while True:
+            match = re.search(r'[;{}]', buffer)
+            if not match:
+                break
+            statement, end, buffer = buffer[:match.start()].split(), match.group(), buffer[match.end():]
+            if end == '{':
+                name = statement[0] if statement else ''
+                if name == 'server' and not {'server', 'stream', 'upstream', 'mail'} & set(stack):
+                    server = {'file': current_file, 'ports': [], 'default_ports': [], 'names': []}
+                    servers.append(server)
+                stack.append(name)
+            elif end == '}':
+                if stack and stack.pop() == 'server' and 'server' not in stack:
+                    if server is not None and not server['ports']:
+                        server['ports'].append(80)  # no listen directive: port 80
+                    server = None
+            elif server is not None and stack and stack[-1] == 'server' and statement:
+                if statement[0] == 'listen':
+                    port = listen_port(statement[1:])
+                    if port and port not in server['ports']:
+                        server['ports'].append(port)
+                    if port and {'default_server', 'default'} & set(statement[2:]) \
+                            and port not in server['default_ports']:
+                        server['default_ports'].append(port)
+                elif statement[0] == 'server_name':
+                    server['names'].extend(name.lower() for name in statement[1:])
+    return servers
+
+
+def site_conflicts(servers, names, ports):
+    """(same-name conflicts [(file, name, port)], default sites {port: file}) among other sites."""
+    clashes, defaults = [], {}
+    for port in ports:
+        on_port = [server for server in servers if port in server['ports']]
+        for server in on_port:
+            for name in server['names']:
+                if name in names and (server['file'], name, port) not in clashes:
+                    clashes.append((server['file'], name, port))
+        flagged = [server for server in on_port if port in server['default_ports']]
+        if flagged or on_port:
+            defaults[port] = (flagged or on_port)[0]['file']
+    return clashes, defaults
 
 
 def subject_alt_names(names):
@@ -115,7 +183,8 @@ def parse_nginx_version(output):
 
 
 def site_url(server_name, https_port):
-    host = '[%s]' % server_name if ':' in server_name else server_name
+    name = main_name(server_name)
+    host = '[%s]' % name if ':' in name else name
     return 'https://%s%s/' % (host, '' if https_port == 443 else ':%d' % https_port)
 
 
@@ -296,11 +365,11 @@ WantedBy=multi-user.target
 
 
 def check_letsencrypt(settings):
-    name = settings['server_name']
-    if is_ip(name) or '.' not in name or name.endswith(('.local', '.localhost', '.lan', '.internal')):
-        raise InstallError('Let\'s Encrypt needs a public domain name in install.server_name '
-                           '(NEVERDIE_SERVER_NAME), pointing to this machine; got %r. Use certificate: '
-                           'self-signed otherwise.' % name)
+    for name in settings['server_name'].split():
+        if is_ip(name) or '.' not in name or name.endswith(('.local', '.localhost', '.lan', '.internal')):
+            raise InstallError('Let\'s Encrypt needs public domain names in install.server_name '
+                               '(NEVERDIE_SERVER_NAME), pointing to this machine; got %r. Use certificate: '
+                               'self-signed otherwise.' % name)
     if settings['http_port'] != 80:
         raise InstallError('Let\'s Encrypt checks the domain over HTTP on port 80: install.http_port must be 80.')
 
@@ -391,13 +460,40 @@ def ipv6_available():
         return False
 
 
+HOST_NAME = re.compile(r'^[a-z0-9](?:[a-z0-9-]*[a-z0-9])?(?:\.[a-z0-9](?:[a-z0-9-]*[a-z0-9])?)*$')
+
+
+def machine_names(hostname_output=None):
+    """Default server names: the names of this machine and its IPv4 addresses (not loopback)."""
+    names = []
+    for name in (socket.getfqdn(), socket.gethostname()):
+        name = (name or '').lower()
+        if name and HOST_NAME.match(name) and name not in names and name != 'localhost':
+            names.append(name)
+    if hostname_output is None:
+        try:
+            hostname_output = subprocess.run(['hostname', '-I'], capture_output=True, text=True).stdout
+        except OSError:
+            hostname_output = ''
+    for address in hostname_output.split():
+        try:
+            ip = ipaddress.ip_address(address)
+        except ValueError:
+            continue
+        if ip.version == 4 and not ip.is_loopback and not ip.is_link_local and str(ip) not in names:
+            names.append(str(ip))
+    return names or ['localhost']
+
+
 def read_settings(python):
     result = subprocess.run([python, '-m', 'server.settings.config'], cwd=ROOT, capture_output=True, text=True)
     if result.returncode != 0:
         raise InstallError((result.stderr or result.stdout).strip())
     settings = json.loads(result.stdout.strip().splitlines()[-1])
     if not settings['server_name']:
-        settings['server_name'] = (socket.getfqdn() or socket.gethostname()).lower()
+        settings['server_name'] = ' '.join(machine_names())
+        say('install.server_name is not set: serving %s (the names and addresses of this machine).'
+            % settings['server_name'].replace(' ', ', '))
     if settings['http_port'] == settings['https_port']:
         raise InstallError('install.http_port and install.https_port must differ.')
     if settings['port'] in (settings['http_port'], settings['https_port']):
@@ -513,7 +609,11 @@ def disable_stock_default_site(installer, settings):
 
 
 def apply_nginx(installer, nginx):
-    installer.root([nginx, '-t'], capture=not installer.dry_run)
+    result = installer.root([nginx, '-t'], capture=not installer.dry_run)
+    # nginx -t passes with warnings that matter, such as "conflicting server name ... ignored".
+    for line in (result.stderr or '').splitlines():
+        if '[warn]' in line:
+            say('nginx warning: %s' % line.split('[warn]', 1)[1].strip())
     if installer.dry_run or subprocess.run(['systemctl', 'is-active', '--quiet', 'nginx']).returncode == 0:
         installer.root(['systemctl', 'reload', 'nginx'])
     else:
@@ -528,7 +628,7 @@ def write_site(installer, nginx, settings, certificate, key, site, link, version
 
 
 def letsencrypt_certificate(installer, settings):
-    name = settings['server_name']
+    name = main_name(settings['server_name'])
     live = '%s/%s' % (LETSENCRYPT_LIVE, name)
     certificate, key = live + '/fullchain.pem', live + '/privkey.pem'
     if installer.root_file_exists(certificate):
@@ -539,10 +639,14 @@ def letsencrypt_certificate(installer, settings):
 
 def request_letsencrypt(installer, settings):
     certbot = ensure_program(installer, 'certbot')
-    say('asking Let\'s Encrypt for a certificate of %s (certbot may ask you to accept its terms)...'
-        % settings['server_name'])
-    command = [certbot, 'certonly', '--webroot', '-w', ACME_ROOT, '-d', settings['server_name'],
-               '--deploy-hook', 'systemctl reload nginx']
+    names = settings['server_name'].split()
+    say('Let\'s Encrypt certificate of %s (certbot may ask you to accept its terms the first time)...'
+        % ', '.join(names))
+    # --keep-until-expiring: nothing to do while the certificate is current; --expand: add new names.
+    command = [certbot, 'certonly', '--webroot', '-w', ACME_ROOT, '--cert-name', names[0],
+               '--keep-until-expiring', '--expand', '--deploy-hook', 'systemctl reload nginx']
+    for name in names:
+        command += ['-d', name]
     command += ['--email', settings['email']] if settings['email'] else ['--register-unsafely-without-email']
     installer.root(command)
 
@@ -587,8 +691,9 @@ def check_site(installer, settings, service):
             raise InstallError('the app did not start (%s). See: journalctl -u %s -n 50' % (status, SERVICE_NAME))
         say('the app answers on %s.' % backend)
     https = 'https://127.0.0.1:%d' % settings['https_port']
-    page = wait_for(https + '/', (200,), 30, host=settings['server_name'], insecure=True)
-    api = wait_for(https + '/api/auth', (401,), 30, host=settings['server_name'], insecure=True)
+    host = main_name(settings['server_name'])
+    page = wait_for(https + '/', (200,), 30, host=host, insecure=True)
+    api = wait_for(https + '/api/auth', (401,), 30, host=host, insecure=True)
     if page != 200 or (service and api != 401):
         raise InstallError('nginx does not serve the site as expected (page: %s, API: %s). '
                            'See: sudo nginx -t; journalctl -u nginx' % (page, api))
@@ -602,6 +707,43 @@ def allow_proxy_with_selinux(installer):
         return
     say('SELinux: allowing nginx to connect to the app (httpd_can_network_connect).')
     installer.root(['setsebool', '-P', 'httpd_can_network_connect', '1'])
+
+
+def check_other_sites(installer, nginx, settings, site, link):
+    """Stops on another nginx site with one of our names (nginx would serve only one of them).
+
+    nginx picks the site whose server_name matches the name of the link, else the default
+    site of the port (marked default_server, or the first one loaded).
+    """
+    servers = nginx_servers(installer, nginx)
+    ours = {site, link, os.path.realpath(site)}
+    others = [server for server in servers if server['file'] not in ours]
+    clashes, _ = site_conflicts(others, settings['server_name'].split(),
+                                (settings['http_port'], settings['https_port']))
+    if clashes:
+        raise InstallError('other nginx sites already answer to the names of Neverdie, so nginx would show '
+                           'only one of them:\n%s\nRemove these names from those sites, or set install.server_name '
+                           '(NEVERDIE_SERVER_NAME) to other names.'
+                           % '\n'.join('  %s: %s on port %d' % clash for clash in clashes))
+
+
+def nginx_servers(installer, nginx):
+    dump = installer.root([nginx, '-T'], check=False, capture=True)
+    if installer.dry_run or dump.returncode != 0:
+        return []
+    return parse_servers(dump.stdout)
+
+
+def default_site_notes(installer, nginx, settings, site, link):
+    """Ports whose default site (for links with other names) is another site, once ours is written."""
+    ours = {site, link, os.path.realpath(site)}
+    names = settings['server_name'].split()
+    _, defaults = site_conflicts(nginx_servers(installer, nginx), names,
+                                 (settings['http_port'], settings['https_port']))
+    return ['port %d: a link with a name or address other than %s shows %s (the default nginx site of '
+            'that port). Add that name to install.server_name to reach Neverdie with it.'
+            % (port, ', '.join(names), path)
+            for port, path in sorted(defaults.items()) if path not in ours]
 
 
 def install(args):
@@ -623,6 +765,7 @@ def install(args):
     publish_ui(installer)
     installer.root(['install', '-d', '-m', '755', ACME_ROOT])
     disabled_default = disable_stock_default_site(installer, settings)
+    check_other_sites(installer, nginx, settings, site, link)
     allow_proxy_with_selinux(installer)
 
     names = certificate_names(settings['server_name'])
@@ -632,12 +775,14 @@ def install(args):
             # nginx needs a certificate to start: a self-signed one until Let's Encrypt answers.
             temporary = self_signed_certificate(installer, names)
             write_site(installer, nginx, settings, temporary[0], temporary[1], site, link, version)
-            request_letsencrypt(installer, settings)
+        # New certificate, or new names; certbot keeps a current one as it is.
+        request_letsencrypt(installer, settings)
     else:
         certificate, key = self_signed_certificate(installer, names, renew=args.renew_certificate)
 
     say('writing the nginx site %s...' % site)
     write_site(installer, nginx, settings, certificate, key, site, link, version)
+    notes = default_site_notes(installer, nginx, settings, site, link)
 
     user = None
     if not args.no_service:
@@ -663,6 +808,9 @@ def install(args):
         return 0
     print()
     print('Neverdie is installed: %s' % url)
+    print('* nginx serves it for: %s' % ', '.join(settings['server_name'].split()))
+    for note in notes:
+        print('* Other sites on this nginx, %s' % note)
     if settings['certificate'] == 'self-signed':
         print('* The certificate is self-signed: browsers warn about it until you trust %s/neverdie.crt '
               'on the computers that open the site.' % TLS_DIR)

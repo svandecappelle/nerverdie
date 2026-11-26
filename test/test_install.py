@@ -111,8 +111,9 @@ def test_install_settings_of_the_configuration(clean_config, monkeypatch, tmp_pa
 
 
 @pytest.mark.parametrize('variable, value, message', [
-    ('NEVERDIE_SERVER_NAME', 'evil.com; include /etc/passwd', 'server_name must be a host name'),
-    ('NEVERDIE_SERVER_NAME', 'a b', 'server_name must be a host name'),
+    ('NEVERDIE_SERVER_NAME', 'evil.com; include /etc/passwd', 'server_name must be host names'),
+    ('NEVERDIE_SERVER_NAME', 'a"b', 'server_name must be host names'),
+    ('NEVERDIE_SERVER_NAME', 'monitor.example.com {', 'server_name must be host names'),
     ('NEVERDIE_CERTIFICATE', 'acme', 'certificate must be one of'),
     ('NEVERDIE_LETSENCRYPT_EMAIL', 'not-an-email', 'email must be an e-mail address'),
     ('NEVERDIE_HTTPS_PORT', '0', 'https_port must be a whole number'),
@@ -185,6 +186,134 @@ def test_uninstall_removes_what_install_recorded(dry_run, tmp_path, capsys):
                     'rm -f /etc/nginx/sites-enabled/neverdie', 'rm -f /etc/nginx/sites-available/neverdie',
                     'rm -rf /var/www/neverdie'):
         assert 'would run: ' + command in output
+
+
+NGINX_DUMP = """\
+nginx: the configuration file /etc/nginx/nginx.conf syntax is ok
+# configuration file /etc/nginx/nginx.conf:
+user www-data;
+events { worker_connections 768; }
+http {
+    upstream app { server 127.0.0.1:9000; }   # not a site
+    include /etc/nginx/sites-enabled/*;
+}
+stream {
+    server { listen 443; proxy_pass app; }
+}
+
+# configuration file /etc/nginx/sites-enabled/blog:
+server {
+    listen 80;
+    server_name blog.example.com www.example.com;
+}
+server {
+    listen 443 ssl default_server;
+    listen [::]:443 ssl default_server;
+    server_name blog.example.com
+                Monitor.Example.com;   # a name over two lines
+    location / { root /srv/blog; }
+}
+
+# configuration file /etc/nginx/sites-enabled/neverdie:
+server {
+    listen 443 ssl;
+    server_name monitor.example.com;
+}
+
+# configuration file /etc/nginx/conf.d/legacy.conf:
+server {
+    server_name legacy.example.com;  # no listen: port 80
+}
+"""
+
+
+def test_parse_the_sites_of_nginx_t():
+    servers = install.parse_servers(NGINX_DUMP)
+    assert [(s['file'].rsplit('/', 1)[1], s['ports'], s['default_ports']) for s in servers] == [
+        ('blog', [80], []),
+        ('blog', [443], [443]),
+        ('neverdie', [443], []),
+        ('legacy.conf', [80], []),
+    ]
+    assert servers[1]['names'] == ['blog.example.com', 'monitor.example.com']
+
+
+@pytest.mark.parametrize('arguments, port', [
+    (['443', 'ssl'], 443), (['0.0.0.0:8443'], 8443), (['[::]:443', 'ssl'], 443), (['*:80'], 80),
+    (['127.0.0.1'], 80), (['unix:/run/nginx.sock'], None), ([], 80),
+])
+def test_listen_port(arguments, port):
+    assert install.listen_port(arguments) == port
+
+
+def test_conflicts_with_other_sites():
+    others = [s for s in install.parse_servers(NGINX_DUMP) if not s['file'].endswith('neverdie')]
+    clashes, defaults = install.site_conflicts(others, ['monitor.example.com', '10.0.0.5'], (80, 443))
+    assert clashes == [('/etc/nginx/sites-enabled/blog', 'monitor.example.com', 443)]
+    # The blog is the first site on port 80, and default_server on 443.
+    assert defaults == {80: '/etc/nginx/sites-enabled/blog', 443: '/etc/nginx/sites-enabled/blog'}
+
+
+def test_install_stops_on_a_site_with_the_same_name(monkeypatch):
+    installer = install.Installer()
+    monkeypatch.setattr(installer, 'root', lambda *a, **k: install.subprocess.CompletedProcess(a, 0, NGINX_DUMP, ''))
+    with pytest.raises(install.InstallError, match='(?s)already answer.*blog: monitor.example.com on port 443'):
+        install.check_other_sites(installer, 'nginx', settings(), install.SITES_AVAILABLE + '/neverdie',
+                                  install.SITES_ENABLED + '/neverdie')
+    # Other names: no clash, but the blog stays the default site of both ports.
+    install.check_other_sites(installer, 'nginx', settings(server_name='status.example.com'),
+                              install.SITES_AVAILABLE + '/neverdie', install.SITES_ENABLED + '/neverdie')
+    notes = install.default_site_notes(installer, 'nginx', settings(server_name='status.example.com'),
+                                       install.SITES_AVAILABLE + '/neverdie', install.SITES_ENABLED + '/neverdie')
+    assert len(notes) == 2 and 'shows /etc/nginx/sites-enabled/blog' in notes[1]
+
+
+def test_default_names_are_the_machine_names_and_addresses(monkeypatch):
+    monkeypatch.setattr(install.socket, 'getfqdn', lambda: 'Server1.Example.lan')
+    monkeypatch.setattr(install.socket, 'gethostname', lambda: 'server1')
+    assert install.machine_names('192.168.1.20 127.0.0.1 169.254.3.3 fe80::1 2001:db8::5') == \
+        ['server1.example.lan', 'server1', '192.168.1.20']
+    monkeypatch.setattr(install.socket, 'getfqdn', lambda: 'localhost')
+    monkeypatch.setattr(install.socket, 'gethostname', lambda: 'bad_name')
+    assert install.machine_names('') == ['localhost']
+
+
+def test_several_server_names():
+    many = settings(server_name='monitor.example.com 192.168.1.20')
+    assert install.certificate_names(many['server_name']) == \
+        ['monitor.example.com', '192.168.1.20', 'localhost', '127.0.0.1', '::1']
+    assert install.site_url(many['server_name'], 443) == 'https://monitor.example.com/'
+    assert 'server_name monitor.example.com 192.168.1.20;' in install.render_nginx(many, 'c', 'k')
+    with pytest.raises(install.InstallError, match="'192.168.1.20'"):
+        install.check_letsencrypt(dict(many, certificate='letsencrypt'))
+
+
+def test_letsencrypt_asks_for_every_name(capsys, tmp_path):
+    installer = install.Installer(dry_run=str(tmp_path))  # prints the commands only
+    install.request_letsencrypt(installer, settings(server_name='monitor.example.com status.example.com',
+                                                    email='ops@example.com'))
+    command = capsys.readouterr().out
+    assert '--cert-name monitor.example.com' in command and '--keep-until-expiring --expand' in command
+    assert '-d monitor.example.com -d status.example.com --email ops@example.com' in command
+
+
+@pytest.mark.parametrize('value, expected', [
+    ('monitor.example.com 192.168.1.20', 'monitor.example.com 192.168.1.20'),
+    ('Monitor.example.com, 192.168.1.20,monitor.example.com', 'monitor.example.com 192.168.1.20'),
+])
+def test_server_names_of_the_configuration(clean_config, monkeypatch, value, expected):
+    monkeypatch.setenv('NEVERDIE_SERVER_NAME', value)
+    assert config.load()['server_name'] == expected
+
+
+def test_server_names_as_a_yaml_list(clean_config, monkeypatch, tmp_path):
+    path = tmp_path / 'neverdie.yml'
+    path.write_text('install:\n  server_name:\n    - monitor.example.com\n    - 10.0.0.5\n')
+    monkeypatch.setenv('NEVERDIE_CONFIG', str(path))
+    assert config.load()['server_name'] == 'monitor.example.com 10.0.0.5'
+    path.write_text('install:\n  server_name: [monitor.example.com, "bad;name"]\n')
+    with pytest.raises(config.ConfigError, match="'bad;name'"):
+        config.load()
 
 
 def test_uninstall_without_install(dry_run, capsys):

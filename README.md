@@ -141,12 +141,13 @@ make install
 Settings, in the `install` section of `etc/neverdie.yml` (or the variables in brackets):
 ```yaml
 install:
-  server_name: monitor.example.com  # (NEVERDIE_SERVER_NAME) default: the name of this machine
+  server_name: monitor.example.com  # (NEVERDIE_SERVER_NAME) one or more names / IP addresses, see below
   http_port: 80                     # (NEVERDIE_HTTP_PORT)
   https_port: 443                   # (NEVERDIE_HTTPS_PORT)
   certificate: self-signed          # (NEVERDIE_CERTIFICATE) or letsencrypt
   email: ops@example.com            # (NEVERDIE_LETSENCRYPT_EMAIL) Let's Encrypt notices, optional
 ```
+* **Server names**: nginx shows Neverdie for links whose name is in `server_name`; a link with another name or address shows the *default site* of the port when nginx serves other sites. List every name and address used to open the monitor: `server_name: [monitor.example.com, 192.168.1.20]` (or `"monitor.example.com 192.168.1.20"`); the first one is the main name. When it is not set, `make install` uses the names and IPv4 addresses of the machine. It stops when another nginx site already uses one of these names, and tells which site answers the other links.
 * **Self-signed** (default): browsers warn about the certificate until it is trusted on the computers that open the site (import `/etc/neverdie/tls/neverdie.crt`). Fine on a private network.
 * **Let's Encrypt** (`certificate: letsencrypt`): a certificate trusted by browsers, for a public domain name that points to this server, with port 80 reachable from the Internet. certbot is installed when missing, asks you to accept the Let's Encrypt terms the first time, and renews the certificate by itself (nginx is reloaded after each renewal).
 

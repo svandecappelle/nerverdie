@@ -99,11 +99,20 @@ def check(name, value, origin):
             raise ConfigError('%s: the host must be an address such as 127.0.0.1, got %r' % (origin, value))
         return value.strip()
     if name == 'server_name':
-        text = '' if value is None else str(value).strip()
-        if text and (len(text) > 253 or not SERVER_NAME.match(text)):
-            raise ConfigError('%s: server_name must be a host name such as monitor.example.com or an IP address, '
-                              'got %r' % (origin, value))
-        return text.lower()
+        # One name, or several (a YAML list, or names separated by spaces or commas): the
+        # first one is the main name. Returned as one string, names separated by a space.
+        items = value if isinstance(value, list) else re.split(r'[\s,]+', '' if value is None else str(value))
+        names = []
+        for item in items:
+            text = str(item).strip().lower()
+            if not text:
+                continue
+            if len(text) > 253 or not SERVER_NAME.match(text):
+                raise ConfigError('%s: server_name must be host names such as monitor.example.com or IP '
+                                  'addresses, got %r' % (origin, item))
+            if text not in names:
+                names.append(text)
+        return ' '.join(names)
     if name == 'certificate':
         text = str(value).strip().lower()
         if text not in CERTIFICATES:

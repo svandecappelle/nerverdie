@@ -20,8 +20,10 @@ server:
 
 install:
   # Production install behind nginx with HTTPS (`make install`, see README).
-  # Name of the site (host name or IP address); default: the name of this machine.
-  # server_name: monitor.example.com
+  # Names and addresses used in the links to the monitor (the first one is the main name).
+  # nginx shows another site for a link with a name missing here, when it serves other sites.
+  # Default: the names and IPv4 addresses of this machine.
+  # server_name: [monitor.example.com, 192.168.1.20]
 
   # Ports of nginx; HTTP redirects to HTTPS.
   # http_port: 80
