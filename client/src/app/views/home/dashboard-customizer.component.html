@@ -1,0 +1,91 @@
+<section class="panel customizer" aria-labelledby="customize-title">
+  <header class="head">
+    <div>
+      <h2 id="customize-title" class="panel-title">Customize dashboard</h2>
+      <p class="panel-subtitle">Choose the tiles and charts shown, their order and their size. Saved in this browser.</p>
+    </div>
+    <div class="actions">
+      <button mat-button type="button" (click)="layout.reset()" [disabled]="!layout.customized()">
+        <mat-icon>restart_alt</mat-icon>
+        Reset
+      </button>
+      <button mat-flat-button type="button" (click)="done.emit()">Done</button>
+    </div>
+  </header>
+
+  <div class="columns">
+    <fieldset class="tiles">
+      <legend>Status tiles</legend>
+      @for (tile of tiles(); track tile) {
+        <mat-checkbox [checked]="layout.isTileVisible(tile)" (change)="layout.setTileVisible(tile, $event.checked)">
+          {{ tile }}
+        </mat-checkbox>
+      }
+    </fieldset>
+
+    <div class="charts">
+      <h3 id="charts-title">Charts</h3>
+      <p class="hint">Drag the rows, or use the arrows, to change the order.</p>
+      <ol cdkDropList (cdkDropListDropped)="drop($event)" aria-labelledby="charts-title">
+        @for (panel of layout.layout().panels; track panel.id; let first = $first, last = $last, i = $index) {
+          <li cdkDrag cdkDragLockAxis="y" class="row" [class.off]="!panel.visible">
+            <mat-icon cdkDragHandle class="handle" matTooltip="Drag to reorder" aria-hidden="true">
+              drag_indicator
+            </mat-icon>
+            <mat-checkbox
+              class="name"
+              [checked]="panel.visible"
+              (change)="layout.updatePanel(panel.id, { visible: $event.checked })"
+            >
+              {{ titles[panel.id] }}
+            </mat-checkbox>
+            <mat-button-toggle-group
+              class="size"
+              [value]="panel.width"
+              (change)="setWidth(panel.id, $event.value)"
+              [attr.aria-label]="titles[panel.id] + ' width'"
+              hideSingleSelectionIndicator
+            >
+              @for (width of widths; track width.value) {
+                <mat-button-toggle [value]="width.value">{{ width.label }}</mat-button-toggle>
+              }
+            </mat-button-toggle-group>
+            <mat-button-toggle-group
+              class="size"
+              [value]="panel.height"
+              (change)="setHeight(panel.id, $event.value)"
+              [attr.aria-label]="titles[panel.id] + ' height'"
+              hideSingleSelectionIndicator
+            >
+              @for (height of heights; track height.value) {
+                <mat-button-toggle [value]="height.value" [aria-label]="height.label" [matTooltip]="height.label">
+                  {{ height.short }}
+                </mat-button-toggle>
+              }
+            </mat-button-toggle-group>
+            <span class="move">
+              <button
+                mat-icon-button
+                type="button"
+                [disabled]="first"
+                (click)="layout.movePanel(i, i - 1)"
+                [attr.aria-label]="'Move ' + titles[panel.id] + ' up'"
+              >
+                <mat-icon>arrow_upward</mat-icon>
+              </button>
+              <button
+                mat-icon-button
+                type="button"
+                [disabled]="last"
+                (click)="layout.movePanel(i, i + 1)"
+                [attr.aria-label]="'Move ' + titles[panel.id] + ' down'"
+              >
+                <mat-icon>arrow_downward</mat-icon>
+              </button>
+            </span>
+          </li>
+        }
+      </ol>
+    </div>
+  </div>
+</section>

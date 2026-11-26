@@ -68,8 +68,9 @@ def test_login_get_is_not_allowed(client):
 
 
 def test_login_is_throttled_after_failures(client):
-    for _ in range(5):
-        assert login(client, password='wrong').status_code == 401
+    # Unknown accounts: the address throttle applies, not the account lock.
+    for index in range(5):
+        assert login(client, username='nobody%d' % index, password='wrong').status_code == 401
     assert login(client).status_code == 429
 
 

@@ -92,6 +92,9 @@ jobs:
       - name: Known vulnerabilities (npm audit)
         run: npm audit --audit-level=high
 
+      - name: Licences (no paid or proprietary dependency)
+        run: npm run licenses
+
       - name: Lint
         run: npm run lint
 

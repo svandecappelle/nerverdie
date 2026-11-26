@@ -1,8 +1,91 @@
-.content {
-  padding: 1em;
-  padding-bottom: 4em;
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 16px;
+  margin-bottom: 24px;
 }
 
-mat-grid-tile {
-  transition: background 0.3s;
+.charts {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+
+  app-chart {
+    margin-top: 12px;
+  }
+}
+
+.wide,
+.no-charts {
+  grid-column: 1 / -1;
+}
+
+.no-charts {
+  margin: 0;
+  padding: 32px;
+  border: 1px dashed var(--mat-sys-outline-variant);
+  border-radius: 16px;
+  text-align: center;
+  color: var(--mat-sys-on-surface-variant);
+}
+
+.header-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.customize {
+  height: 38px;
+  border-radius: 10px;
+
+  &.active {
+    background: var(--mat-sys-secondary-container);
+    color: var(--mat-sys-on-secondary-container);
+  }
+}
+
+@media (max-width: 960px) {
+  .charts {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
+.title-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.panel-head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px 12px;
+
+  mat-button-toggle-group {
+    --mat-standard-button-toggle-height: 32px;
+  }
+}
+
+.chart-box {
+  position: relative;
+}
+
+.no-data {
+  position: absolute;
+  inset: 12px 0 40px;
+  display: grid;
+  place-items: center;
+  color: var(--mat-sys-on-surface-variant);
+  pointer-events: none;
+}
+
+.charts-error {
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--mat-sys-error-container);
+  color: var(--mat-sys-on-error-container);
 }

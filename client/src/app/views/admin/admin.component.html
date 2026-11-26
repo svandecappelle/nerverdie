@@ -1,0 +1,112 @@
+<div class="page">
+  <header class="page-header">
+    <div>
+      <h1>Administration</h1>
+      <p>Storage of the monitoring database and login security</p>
+    </div>
+  </header>
+
+  <div class="layout">
+    <section class="panel">
+      <div class="panel-head">
+        <span class="icon" aria-hidden="true"><mat-icon>storage</mat-icon></span>
+        <div>
+          <h2 class="panel-title">Database storage</h2>
+          <p class="panel-subtitle">
+            When the limit is reached, the oldest samples are deleted to make room for the new ones.
+          </p>
+        </div>
+      </div>
+
+      @if (status(); as status) {
+        <section class="usage" aria-label="Database usage">
+          <p class="usage-text">
+            <strong>{{ formatBytes(status.used_bytes) }}</strong>
+            @if (status.limit_bytes) {
+              used of {{ formatBytes(status.limit_bytes) }} ({{ usage() | percent: '1.0-0' }})
+            } @else {
+              used, no size limit
+            }
+          </p>
+          @if (usage() !== undefined) {
+            <mat-progress-bar
+              mode="determinate"
+              [value]="usage()! * 100"
+              aria-label="Share of the size limit in use"
+            />
+          }
+        </section>
+
+        <dl class="facts">
+          <div>
+            <dt>File on disk</dt>
+            <dd>{{ formatBytes(status.file_bytes) }}</dd>
+          </div>
+          <div>
+            <dt>Reclaimable by compacting</dt>
+            <dd>{{ formatBytes(status.free_bytes) }}</dd>
+          </div>
+          <div>
+            <dt>Stored samples</dt>
+            <dd>{{ status.samples | number }}</dd>
+          </div>
+          <div>
+            <dt>Oldest sample</dt>
+            <dd>{{ status.oldest ? (status.oldest | date: 'medium') : '—' }}</dd>
+          </div>
+          <div>
+            <dt>Newest sample</dt>
+            <dd>{{ status.newest ? (status.newest | date: 'medium') : '—' }}</dd>
+          </div>
+        </dl>
+      } @else if (!error()) {
+        <mat-progress-bar class="loading" mode="indeterminate" aria-label="Loading the storage status" />
+      }
+
+      @if (message()) {
+        <p class="message" role="status">{{ message() }}</p>
+      }
+      @if (error()) {
+        <p class="error" role="alert">{{ error() }}</p>
+      }
+    </section>
+
+    <aside class="side">
+      <section class="panel">
+        <h2 class="panel-title">Size limit</h2>
+        <p class="panel-subtitle">Applied as soon as it is saved.</p>
+        <form class="limit" [formGroup]="form" (ngSubmit)="save()">
+          <mat-slide-toggle formControlName="limited">Limit the database size</mat-slide-toggle>
+          <mat-form-field appearance="outline">
+            <mat-label>Size limit</mat-label>
+            <input matInput type="number" formControlName="limitMb" min="1" step="1" />
+            <span matTextSuffix>MB</span>
+            @if (form.controls.limitMb.hasError('max')) {
+              <mat-error>At most {{ status()?.max_limit_mb | number }} MB</mat-error>
+            } @else {
+              <mat-error>A whole number of MB, at least {{ status()?.min_limit_mb ?? 1 }}</mat-error>
+            }
+          </mat-form-field>
+          <button mat-flat-button type="submit" [disabled]="busy()">
+            <mat-icon>save</mat-icon>
+            Save
+          </button>
+        </form>
+      </section>
+
+      <section class="panel">
+        <h2 class="panel-title">Compaction</h2>
+        <p class="panel-subtitle">
+          Gives the free space left by deleted samples back to the disk. The database is rewritten,
+          which may take a moment on large files.
+        </p>
+        <button mat-stroked-button class="compact" type="button" (click)="compact()" [disabled]="busy()">
+          <mat-icon>compress</mat-icon>
+          Compact
+        </button>
+      </section>
+    </aside>
+  </div>
+
+  <app-security-panel />
+</div>

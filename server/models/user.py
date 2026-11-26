@@ -1,4 +1,4 @@
-from peewee import CharField, DoesNotExist
+from peewee import CharField, DateTimeField, DoesNotExist, IntegerField
 from werkzeug.security import check_password_hash, generate_password_hash
 
 from server.models.base import BaseModel
@@ -11,6 +11,10 @@ _DUMMY_HASH = generate_password_hash('neverdie-dummy-password')
 class User(BaseModel):
     username = CharField(unique=True)
     password_hash = CharField(null=True)
+    # Failed logins since the last successful one (see server.storage.logins).
+    failed_logins = IntegerField(default=0)
+    # Set while the account is locked after too many failed logins.
+    locked_until = DateTimeField(null=True)
 
     def set_password(self, password):
         self.password_hash = generate_password_hash(password)

@@ -6,6 +6,7 @@
     python manage.py set-password <username>
     python manage.py delete-user <username>
     python manage.py list-users
+    python manage.py unlock-user <username>
 """
 
 import argparse
@@ -13,6 +14,7 @@ import getpass
 import sys
 
 from server.models.user import User
+from server.storage import logins
 from server.storage.main import Datastore
 
 MIN_PASSWORD_LENGTH = 12
@@ -30,7 +32,7 @@ def ask_password():
 def main(argv=None):
     parser = argparse.ArgumentParser(description='Neverdie user administration')
     sub = parser.add_subparsers(dest='command', required=True)
-    for name in ('create-user', 'set-password', 'delete-user'):
+    for name in ('create-user', 'set-password', 'delete-user', 'unlock-user'):
         sub.add_parser(name).add_argument('username')
     sub.add_parser('list-users')
     args = parser.parse_args(argv)
@@ -38,8 +40,12 @@ def main(argv=None):
     Datastore()
 
     if args.command == 'list-users':
-        for user in User.select().order_by(User.username):
-            print(user.username)
+        for account in logins.accounts():
+            if account['locked']:
+                print('%s (locked %s)' % (account['username'], 'until ' + account['locked_until']
+                                           if account['locked_until'] else 'until unlocked'))
+            else:
+                print(account['username'])
         return
 
     user = User.get_or_none(User.username == args.username)
@@ -56,7 +62,11 @@ def main(argv=None):
     elif args.command == 'set-password':
         user.set_password(ask_password())
         user.save()
+        logins.unlock(args.username)
         print('Password updated for %s.' % args.username)
+    elif args.command == 'unlock-user':
+        logins.unlock(args.username)
+        print('User %s unlocked.' % args.username)
     elif args.command == 'delete-user':
         user.delete_instance()
         print('User %s deleted.' % args.username)

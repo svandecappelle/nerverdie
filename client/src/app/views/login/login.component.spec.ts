@@ -29,7 +29,7 @@ describe('LoginComponent', () => {
   });
 
   it('shows an error on bad credentials', async () => {
-    login.mockReturnValue(of(false));
+    login.mockReturnValue(of('Invalid credentials'));
     fixture.componentInstance.form.setValue({ userName: 'admin', password: 'nope' });
     fixture.componentInstance.onSubmit();
     await fixture.whenStable();

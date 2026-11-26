@@ -1,25 +1,97 @@
-mat-card {
+.signin {
   position: relative;
-  max-width: 400px;
-  margin: 2em auto;
-  text-align: center;
+  display: grid;
+  place-items: center;
+  box-sizing: border-box;
+  min-height: 100vh;
+  padding: 24px 16px;
+  background:
+    radial-gradient(60rem 40rem at 10% -10%, color-mix(in srgb, var(--mat-sys-primary) 18%, transparent), transparent),
+    radial-gradient(50rem 40rem at 110% 110%, color-mix(in srgb, var(--mat-sys-tertiary) 16%, transparent), transparent),
+    var(--mat-sys-surface-container-lowest);
 }
 
-.signin-content {
-  padding: 60px 1rem;
+.theme {
+  position: absolute;
+  top: 12px;
+  right: 12px;
 }
 
-.full-width-input {
+.card {
+  position: relative;
   width: 100%;
+  max-width: 400px;
+  overflow: hidden;
+  background: var(--mat-sys-surface-container-low);
+}
+
+mat-card-content {
+  padding: 32px 28px 28px;
+}
+
+.progress {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+}
+
+.brand {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin-bottom: 24px;
+  text-align: center;
+
+  h1 {
+    margin: 12px 0 4px;
+    font: var(--mat-sys-headline-small);
+    font-weight: 700;
+    letter-spacing: -0.02em;
+  }
+
+  p {
+    margin: 0;
+    color: var(--mat-sys-on-surface-variant);
+  }
+}
+
+.logo {
+  display: grid;
+  place-items: center;
+  width: 56px;
+  height: 56px;
+  border-radius: 16px;
+  background: linear-gradient(135deg, var(--mat-sys-primary), var(--mat-sys-tertiary));
+  color: var(--mat-sys-on-primary);
+
+  mat-icon {
+    width: 32px;
+    height: 32px;
+    font-size: 32px;
+  }
+}
+
+form {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+mat-icon[matPrefix] {
+  margin: 0 4px 0 12px;
+  color: var(--mat-sys-on-surface-variant);
 }
 
 .login-error {
-  color: var(--mat-sys-error);
+  margin: 0 0 12px;
+  padding: 10px 12px;
+  border-radius: 8px;
+  background: var(--mat-sys-error-container);
+  color: var(--mat-sys-on-error-container);
 }
 
-.login-in-progress {
-  position: absolute;
-  bottom: 0;
-  left: 0;
-  right: 0;
+.submit {
+  height: 48px;
+  margin-top: 8px;
 }

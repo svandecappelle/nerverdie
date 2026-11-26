@@ -1,0 +1,151 @@
+<div class="controls" role="toolbar" aria-label="Time range">
+  <div class="group">
+    <button
+      mat-icon-button
+      class="square"
+      (click)="time.shift(-1)"
+      aria-label="Move time range backward"
+      matTooltip="Move backward"
+    >
+      <mat-icon>chevron_left</mat-icon>
+    </button>
+    <button
+      class="picker"
+      type="button"
+      cdkOverlayOrigin
+      #origin="cdkOverlayOrigin"
+      (click)="toggle()"
+      [attr.aria-expanded]="open()"
+      aria-haspopup="dialog"
+      aria-label="Time range"
+    >
+      <mat-icon>schedule</mat-icon>
+      <span class="label">{{ label() }}</span>
+      <mat-icon class="caret">{{ open() ? 'expand_less' : 'expand_more' }}</mat-icon>
+    </button>
+    <button
+      mat-icon-button
+      class="square"
+      (click)="time.shift(1)"
+      [disabled]="time.endsNow()"
+      aria-label="Move time range forward"
+      matTooltip="Move forward"
+    >
+      <mat-icon>chevron_right</mat-icon>
+    </button>
+    <button
+      mat-icon-button
+      class="square"
+      (click)="time.zoomOut()"
+      aria-label="Zoom out time range"
+      matTooltip="Zoom out (double-click a chart)"
+    >
+      <mat-icon>zoom_out</mat-icon>
+    </button>
+  </div>
+
+  <div class="group">
+    <button mat-icon-button class="square" (click)="time.reload()" aria-label="Refresh" matTooltip="Refresh">
+      <mat-icon>refresh</mat-icon>
+    </button>
+    <button
+      class="interval"
+      type="button"
+      [matMenuTriggerFor]="intervals"
+      aria-label="Auto-refresh interval"
+      matTooltip="Auto-refresh"
+    >
+      {{ time.refresh() || 'Off' }}
+      <mat-icon class="caret">expand_more</mat-icon>
+    </button>
+  </div>
+</div>
+
+<mat-menu #intervals="matMenu" xPosition="before">
+  @for (interval of refreshIntervals; track interval) {
+    <button
+      mat-menu-item
+      role="menuitemradio"
+      [attr.aria-checked]="interval === time.refresh()"
+      (click)="time.setRefresh(interval)"
+    >
+      {{ interval || 'Off' }}
+    </button>
+  }
+</mat-menu>
+
+<ng-template
+  cdkConnectedOverlay
+  [cdkConnectedOverlayOrigin]="origin"
+  [cdkConnectedOverlayOpen]="open()"
+  [cdkConnectedOverlayPositions]="positions"
+  [cdkConnectedOverlayHasBackdrop]="true"
+  cdkConnectedOverlayBackdropClass="cdk-overlay-transparent-backdrop"
+  (backdropClick)="open.set(false)"
+  (detach)="open.set(false)"
+  (overlayKeydown)="$event.key === 'Escape' && open.set(false)"
+>
+  <div class="panel-popup" role="dialog" aria-label="Choose a time range">
+    <section class="absolute">
+      <h3>Absolute time range</h3>
+      <form (ngSubmit)="apply()">
+        <mat-form-field appearance="outline" subscriptSizing="dynamic">
+          <mat-label>From</mat-label>
+          <input matInput name="from" [ngModel]="from()" (ngModelChange)="from.set($event)" autocomplete="off" />
+        </mat-form-field>
+        <mat-form-field appearance="outline" subscriptSizing="dynamic">
+          <mat-label>To</mat-label>
+          <input matInput name="to" [ngModel]="to()" (ngModelChange)="to.set($event)" autocomplete="off" />
+        </mat-form-field>
+        <p class="hint">Relative like <code>now-6h</code>, or a date like <code>2026-11-25 10:00:00</code>.</p>
+        @if (error()) {
+          <p class="error" role="alert">{{ error() }}</p>
+        }
+        <button mat-flat-button type="submit">Apply time range</button>
+      </form>
+
+      @if (time.recent().length) {
+        <h3>Recently used absolute ranges</h3>
+        <ul class="list">
+          @for (range of time.recent(); track range.from + range.to) {
+            <li>
+              <button type="button" (click)="choose(range)">{{ describe(range) }}</button>
+            </li>
+          }
+        </ul>
+      }
+    </section>
+
+    <section class="quick">
+      <mat-form-field appearance="outline" subscriptSizing="dynamic">
+        <mat-icon matPrefix>search</mat-icon>
+        <input
+          matInput
+          aria-label="Search quick ranges"
+          placeholder="Search quick ranges"
+          [ngModel]="search()"
+          (ngModelChange)="search.set($event)"
+        />
+      </mat-form-field>
+      <ul class="list" aria-label="Quick ranges">
+        @for (quick of quickRanges(); track quick.range.from) {
+          <li>
+            <button
+              type="button"
+              [class.active]="isCurrent(quick.range)"
+              [attr.aria-current]="isCurrent(quick.range) || null"
+              (click)="choose(quick.range)"
+            >
+              {{ quick.label }}
+              @if (isCurrent(quick.range)) {
+                <mat-icon aria-hidden="true">check</mat-icon>
+              }
+            </button>
+          </li>
+        } @empty {
+          <li class="empty">No matching range</li>
+        }
+      </ul>
+    </section>
+  </div>
+</ng-template>

@@ -1,30 +1,167 @@
 @use '@angular/material' as mat;
 
+// Material 3 theme. The colors are emitted with light-dark(), so the
+// `color-scheme` of <html> picks the light or the dark variant: it follows
+// the system by default, `data-theme` (set by ThemeService) forces one.
 html {
-  color-scheme: light;
+  color-scheme: light dark;
   @include mat.theme(
     (
       color: (
-        primary: mat.$blue-palette,
-        tertiary: mat.$magenta-palette,
+        primary: mat.$azure-palette,
+        tertiary: mat.$violet-palette,
       ),
       typography: (
-        plain-family: 'Roboto, "Helvetica Neue", Arial, sans-serif',
-        brand-family: 'Roboto, "Helvetica Neue", Arial, sans-serif',
+        plain-family: 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
+        brand-family: 'system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif',
       ),
       density: 0,
     )
   );
+
+  // Rounder, flatter components.
+  @include mat.card-overrides(
+    (
+      outlined-container-shape: 16px,
+      elevated-container-shape: 16px,
+    )
+  );
+  @include mat.progress-bar-overrides(
+    (
+      active-indicator-height: 8px,
+      track-height: 8px,
+      track-shape: 8px,
+    )
+  );
+
+  // Status colors, readable on both schemes.
+  --app-success: light-dark(#1b873f, #4ade80);
+  --app-success-container: light-dark(#dcfce7, #14532d);
+  --app-danger: var(--mat-sys-error);
+  --app-danger-container: var(--mat-sys-error-container);
+  --app-radius: 16px;
+}
+
+html[data-theme='light'] {
+  color-scheme: light;
+}
+
+html[data-theme='dark'] {
+  color-scheme: dark;
 }
 
 html,
 body {
-  height: 100%;
+  min-height: 100%;
 }
 
 body {
   margin: 0;
-  background: var(--mat-sys-surface);
+  background: var(--mat-sys-surface-container-lowest);
   color: var(--mat-sys-on-surface);
   font: var(--mat-sys-body-medium);
+  -webkit-font-smoothing: antialiased;
+}
+
+/** Page container shared by the views. */
+.page {
+  box-sizing: border-box;
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 24px 24px 64px;
+
+  /* Dashboards use the whole screen width. */
+  &.full-width {
+    max-width: none;
+  }
+}
+
+@media (max-width: 600px) {
+  .page {
+    padding: 16px 16px 48px;
+  }
+}
+
+.page-header {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 24px;
+
+  h1 {
+    margin: 0;
+    font: var(--mat-sys-headline-small);
+    font-weight: 600;
+    letter-spacing: -0.01em;
+  }
+
+  p {
+    margin: 4px 0 0;
+    color: var(--mat-sys-on-surface-variant);
+  }
+}
+
+/** Card surface used by the dashboard panels and the admin screen. */
+.panel {
+  box-sizing: border-box;
+  background: var(--mat-sys-surface-container-low);
+  border: 1px solid var(--mat-sys-outline-variant);
+  border-radius: var(--app-radius);
+  padding: 20px;
+}
+
+.panel-title {
+  margin: 0;
+  font: var(--mat-sys-title-medium);
+  font-weight: 600;
+}
+
+.panel-subtitle {
+  margin: 2px 0 0;
+  color: var(--mat-sys-on-surface-variant);
+  font: var(--mat-sys-body-small);
+}
+
+/** Small rounded status label ("Live", "Contact lost"). */
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  font: var(--mat-sys-label-large);
+  background: var(--mat-sys-surface-container-high);
+  color: var(--mat-sys-on-surface-variant);
+
+  &::before {
+    content: '';
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: currentColor;
+  }
+
+  &.ok {
+    background: var(--app-success-container);
+    color: var(--app-success);
+  }
+
+  &.ko {
+    background: var(--app-danger-container);
+    color: var(--app-danger);
+  }
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .chip.ok::before {
+    animation: pulse 2s ease-in-out infinite;
+  }
+}
+
+@keyframes pulse {
+  50% {
+    opacity: 0.35;
+  }
 }

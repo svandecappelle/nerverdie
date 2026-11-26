@@ -1,91 +1,89 @@
 # -*- coding: utf-8 -*-
+"""Stored metrics history, read by time range for the dashboard charts."""
 
-from datetime import datetime, timedelta
+import math
+from datetime import datetime, timedelta, timezone
 
-from server.models.metrics import Cpu, CpuCore
+from server.models.base import db
+from server.models.metrics import Cpu, CpuCore, Measure
+
+DATE_FORMAT = '%Y-%m-%d %H:%M:%S'
+DEFAULT_SPAN = timedelta(hours=1)
+# The collector stores a sample every 3 seconds.
+COLLECT_PERIOD = 3
+# One hour of samples without averaging.
+DEFAULT_POINTS = 1200
+MIN_POINTS = 10
+MAX_POINTS = 2000
+MAX_SPAN = timedelta(days=400)
+
+# Series of each metric: stored name -> name in the history entries.
+MEASURES = {
+    'memory': {'memory.used': 'used', 'memory.swap': 'swap'},
+    'network': {'network.incoming': 'incoming', 'network.outgoing': 'outgoing'},
+}
+METRICS = ('cpu',) + tuple(MEASURES)
 
 
-def modularRange(start, end, step, mod):
-    return (i % mod for i in range(start, end + 1 + (0 if end >= start else mod), step))
+def _format(moment):
+    return moment.strftime(DATE_FORMAT)
 
 
-def add_delta(date, seconds):
-    return date + timedelta(seconds=seconds)
-
-
-def arrays_of_times(start, end, step):
-    diff = end - start
-    startSec = (start.hour * 60 + start.minute) * 60 + start.second  # Convert to seconds
-    endSec = startSec + (diff.days * 24 * 3600) + diff.seconds
-    return [add_delta(start, secs - startSec) for secs in modularRange(startSec, endSec, step, 24 * 60 * 60 * 365)]
-
-
-# start = datetime.now()
-# end = start + timedelta(hours=1)
-# end_in_ten_days = datetime.now() + timedelta(days=4)
-
-# each_six_seconds = arrays_of_times(start, end, 6)
-# print(each_six_seconds)
-# print(len(each_six_seconds))
-
-# each_ten_minutes = arrays_of_times(start, end, 10 * 60)
-# print(each_ten_minutes)
-# print(len(each_ten_minutes))
-
-# each_two_days = arrays_of_times(start, end_in_ten_days, 2 * 60 * 60 * 24)
-# print(each_two_days)
-# print(len(each_two_days))
-
-def map_dates(empty_filled, database_saved):
-    def search(x):
-        gen = (item for item in database_saved if item['date'] == x.strftime('%Y-%m-%d %H:%M:%S'))
-
-        for item in gen:
-            return item
-        return {
-            'date': x.strftime('%Y-%m-%d %H:%M:%S'),
-            'cpu1': None,
-            'cpu2': None,
-            'cpu3': None,
-            'cpu4': None
-        }
-    return list(map(search, empty_filled))
+def _from_epoch(seconds):
+    """Inverse of SQLite strftime('%s'), which reads a stored local time as UTC."""
+    return datetime.fromtimestamp(seconds, timezone.utc).replace(tzinfo=None)
 
 
 class History:
-    def get(self, metric, tail=int(3600/3)):
-        now = datetime.now()
+    def get(self, metric='cpu', start=None, end=None, points=DEFAULT_POINTS):
+        """Values of `metric` between `start` and `end` (local datetimes).
 
-        empty_datas = arrays_of_times(now - timedelta(hours=1), now, 3)
+        At most about `points` entries are returned: over long ranges the
+        samples are averaged by time buckets of `step` seconds. Returns
+        {'step': seconds, 'from': date, 'to': date, 'samples': [
+            {'date': 'YYYY-MM-DD HH:MM:SS', '<serie>': value, ...}, ...]}
+        oldest first, where the series are cpu0, cpu1... for 'cpu',
+        used / swap for 'memory' and incoming / outgoing (bytes/s) for
+        'network'.
+        """
+        if metric not in METRICS:
+            raise ValueError('unknown metric %r' % metric)
+        end = end or datetime.now()
+        start = start or end - DEFAULT_SPAN
+        if start >= end:
+            raise ValueError('the start of the range must be before its end')
+        if end - start > MAX_SPAN:
+            raise ValueError('the range cannot exceed %d days' % MAX_SPAN.days)
+        points = min(max(int(points), MIN_POINTS), MAX_POINTS)
 
-        cpucores = CpuCore.select(
-            CpuCore, Cpu
-            ).join(Cpu).where(
-                Cpu.time > empty_datas[0]
-            ).order_by(
-                Cpu.time.asc(), CpuCore.name.asc()
-            )
-        history = []
-        metric_entry = None
-        for cpucore_metric in cpucores:
-            if metric_entry and metric_entry['date'] == str(cpucore_metric.cpu.time):
-                metric_entry[cpucore_metric.name] = float(cpucore_metric.load)
-            elif metric_entry and metric_entry['date'] != str(cpucore_metric.cpu.time):
-                metric_entry[cpucore_metric.name] = float(cpucore_metric.load)
-                history.append(metric_entry)
-                metric_entry = None
-            else:
-                metric_entry = {
-                    'date': str(cpucore_metric.cpu.time),
-                    cpucore_metric.name: float(cpucore_metric.load)
-                }
-        # An empty history (fresh database) must not raise IndexError.
-        if not history or history[0]['date'] != empty_datas[0].strftime('%Y-%m-%d %H:%M:%S'):
-            history.append({
-                'date': empty_datas[0].strftime('%Y-%m-%d %H:%M:%S'),
-                'cpu1': None,
-                'cpu2': None,
-                'cpu3': None,
-                'cpu4': None
-            })
-        return history
+        step = max(COLLECT_PERIOD, math.ceil((end - start).total_seconds() / points))
+        # Short ranges: one entry per sample (they are 3 s apart, never in the same second).
+        bucket = step if step > COLLECT_PERIOD else 1
+
+        sample = Cpu._meta.table_name
+        if metric == 'cpu':
+            table, link, value, names = CpuCore._meta.table_name, 'cpu_id', 'load', None
+        else:
+            table, link, value, names = Measure._meta.table_name, 'sample_id', 'value', MEASURES[metric]
+        # Only internal constants are formatted in; the range and names are parameters.
+        query = (  # noqa: S608
+            'SELECT (CAST(strftime(\'%%s\', s."time") AS INTEGER) / %(bucket)d) * %(bucket)d AS bucket, '
+            'v."name", AVG(v."%(value)s") '
+            'FROM "%(table)s" AS v JOIN "%(sample)s" AS s ON v."%(link)s" = s."id" '
+            'WHERE s."time" >= ? AND s."time" <= ? %(names)s'
+            'GROUP BY bucket, v."name" ORDER BY bucket'
+        ) % {
+            'bucket': bucket, 'value': value, 'table': table, 'sample': sample, 'link': link,
+            'names': 'AND v."name" IN (%s) ' % ', '.join('?' * len(names)) if names else '',
+        }
+        params = [_format(start), _format(end)] + (list(names) if names else [])
+
+        samples = []
+        entries = {}
+        for moment, name, average in db.execute_sql(query, params):
+            entry = entries.get(moment)
+            if entry is None:
+                entry = entries[moment] = {'date': _format(_from_epoch(moment))}
+                samples.append(entry)
+            entry[names[name] if names else name] = round(average, 2)
+        return {'step': step, 'from': _format(start), 'to': _format(end), 'samples': samples}
