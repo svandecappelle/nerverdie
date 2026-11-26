@@ -4,6 +4,7 @@
 
     make install                              # or: python scripts/install.py
     python scripts/install.py --dry-run out   # write the files to out/, change nothing
+    make update                               # or: python scripts/install.py --update
     make uninstall                            # or: python scripts/install.py --uninstall
 
 Run it as the user that will run Neverdie (not root): it asks for sudo when
@@ -17,8 +18,12 @@ needed. It:
    for the app, then starts both and checks that the site answers.
 
 Settings: the `install` and `server` sections of etc/neverdie.yml, or the
-NEVERDIE_SERVER_NAME, NEVERDIE_HTTPS_PORT... variables (see README). Run it
-again after an update (git pull): it rebuilds the UI and restarts the app.
+NEVERDIE_SERVER_NAME, NEVERDIE_HTTPS_PORT... variables (see README).
+
+`make update` updates an installed Neverdie without touching its configuration:
+it pulls the new version (git pull --ff-only), updates .venv, rebuilds and
+publishes the UI, then restarts the service; the nginx site, the certificate,
+the systemd unit and etc/neverdie.yml stay as they are.
 """
 
 import argparse
@@ -502,6 +507,15 @@ def read_settings(python):
     return settings
 
 
+def client_dependencies_outdated(client=CLIENT):
+    """No client/node_modules, or package-lock.json changed since npm installed them (an update)."""
+    installed = os.path.join(client, 'node_modules', '.package-lock.json')
+    try:
+        return os.path.getmtime(os.path.join(client, 'package-lock.json')) > os.path.getmtime(installed)
+    except OSError:
+        return True
+
+
 def build_ui(installer, skip):
     index = os.path.join(DIST, 'index.html')
     if skip or installer.dry_run:
@@ -517,7 +531,7 @@ def build_ui(installer, skip):
                            '(or copy a built client/dist and use --skip-build).')
     from serve import check_node
     check_node()
-    if not os.path.isdir(os.path.join(CLIENT, 'node_modules')):
+    if client_dependencies_outdated():
         say('installing the client dependencies (npm ci)...')
         installer.run([npm, 'ci', '--no-audit', '--no-fund'], cwd=CLIENT)
     say('building the UI (npm run build)...')
@@ -796,6 +810,11 @@ def install(args):
         'service': None if args.no_service else SERVICE_FILE,
         'certificate': settings['certificate'],
         'server_name': settings['server_name'],
+        # The settings written into the nginx site: make update checks they did not change.
+        'host': settings['host'],
+        'port': settings['port'],
+        'http_port': settings['http_port'],
+        'https_port': settings['https_port'],
         # Keep the record of a default site turned off by an earlier install.
         'disabled_default_site': disabled_default or read_state().get('disabled_default_site', False),
     }
@@ -817,7 +836,91 @@ def install(args):
     if user:
         print('* The app runs as %s (systemd service %s): journalctl -u %s -f' % (user, SERVICE_NAME, SERVICE_NAME))
     print('* Create a user if needed: python scripts/run.py manage.py create-user <username>')
-    print('* After an update (git pull), run make install again.')
+    print('* To update Neverdie later, keeping this configuration: make update')
+    return 0
+
+
+# Settings written into the nginx site or the certificate: make install applies their changes.
+SITE_SETTINGS = ('server_name', 'certificate', 'http_port', 'https_port')
+# Address of the app, which nginx forwards /api to: the app and nginx must agree on it.
+BACKEND_SETTINGS = ('host', 'port')
+
+
+def changed_settings(state, settings, names):
+    """Settings among `names` that differ from those recorded by make install (older installs
+    did not record them all: those are not compared)."""
+    return [name for name in names if name in state and state[name] != settings[name]]
+
+
+def pull_sources(installer):
+    """git pull --ff-only of the checkout. True when it brought a new version."""
+    if not os.path.isdir(os.path.join(ROOT, '.git')):
+        say('not a git checkout: updating from the files as they are.')
+        return False
+    git = shutil.which('git')
+    if not git:
+        say('git not found: updating from the files as they are.')
+        return False
+    if installer.run([git, 'rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{upstream}'],
+                     check=False, capture=True, cwd=ROOT).returncode != 0:
+        say('the branch has no upstream to pull from: updating from the files as they are.')
+        return False
+    if installer.dry_run:
+        print('  would run: git pull --ff-only')
+        return False
+    before = installer.run([git, 'rev-parse', 'HEAD'], capture=True, cwd=ROOT).stdout.strip()
+    say('pulling the new version (git pull --ff-only)...')
+    result = installer.run([git, 'pull', '--ff-only'], check=False, capture=True, cwd=ROOT)
+    if result.returncode != 0:
+        raise InstallError('git pull --ff-only failed:\n%s\nLocal changes to tracked files (etc/neverdie.yml '
+                           'included) can block it: keep your settings in a file outside the checkout '
+                           '(NEVERDIE_CONFIG), or commit them, then run make update again.'
+                           % (result.stderr or result.stdout).strip())
+    after = installer.run([git, 'rev-parse', 'HEAD'], capture=True, cwd=ROOT).stdout.strip()
+    if after == before:
+        say('already at the latest version (%s).' % after[:12])
+        return False
+    say('updated %s..%s.' % (before[:12], after[:12]))
+    return True
+
+
+def update(args):
+    installer = Installer(args.dry_run)
+    state = read_state()
+    if not state:
+        raise InstallError('Neverdie is not installed here (%s not found): run make install first.' % STATE)
+    if not args.no_pull and pull_sources(installer):
+        # The new version may come with a new version of this script: let it go on.
+        say('going on with the updated scripts...')
+        sys.stdout.flush()
+        os.execv(sys.executable, [sys.executable, os.path.abspath(__file__)] + args.argv + ['--no-pull'])
+
+    python = ensure_venv()
+    settings = read_settings(python)
+    moved = changed_settings(state, settings, BACKEND_SETTINGS)
+    if moved:
+        # The restarted app would listen where nginx does not forward the API.
+        raise InstallError('the address of the app changed since make install (%s): run make install to '
+                           'apply it to nginx too.' % ', '.join('server.%s' % name for name in moved))
+    build_ui(installer, args.skip_build)
+    publish_ui(installer)
+    service = bool(state.get('service'))
+    if service:
+        say('restarting the systemd service %s...' % SERVICE_NAME)
+        installer.root(['systemctl', 'restart', SERVICE_NAME])
+    check_site(installer, settings, service)
+
+    pending = changed_settings(state, settings, SITE_SETTINGS)
+    if installer.dry_run:
+        say('dry run: nothing was changed.')
+    else:
+        print()
+        print('Neverdie is updated: %s' % site_url(state.get('server_name') or settings['server_name'],
+                                                  state.get('https_port', settings['https_port'])))
+        print('* Kept as installed: the nginx site, the certificate, the systemd service and the configuration.')
+    if pending:
+        say('note: the configuration changed since make install (%s); make update does not apply it to '
+            'nginx: run make install for that.' % ', '.join('install.%s' % name for name in pending))
     return 0
 
 
@@ -863,8 +966,16 @@ def main(argv=None):
     parser.add_argument('--skip-build', action='store_true', help='use the UI already built in client/dist')
     parser.add_argument('--no-service', action='store_true', help='do not install the systemd service of the app')
     parser.add_argument('--renew-certificate', action='store_true', help='create a new self-signed certificate')
+    parser.add_argument('--update', action='store_true',
+                        help='update an installed Neverdie (git pull, .venv, UI, service restart), '
+                             'keeping its configuration')
+    parser.add_argument('--no-pull', action='store_true', help='with --update: do not run git pull')
     parser.add_argument('--uninstall', action='store_true', help='remove what make install added')
+    argv = list(sys.argv[1:] if argv is None else argv)
     args = parser.parse_args(argv)
+    args.argv = argv
+    if args.update and args.uninstall:
+        parser.error('--update and --uninstall cannot be used together')
 
     if not args.dry_run:
         if not sys.platform.startswith('linux'):
@@ -873,7 +984,9 @@ def main(argv=None):
         if os.geteuid() == 0:
             sys.exit('install: run it as the user that will run Neverdie, not as root: it asks for sudo when needed.')
     try:
-        return uninstall(args) if args.uninstall else install(args)
+        if args.uninstall:
+            return uninstall(args)
+        return update(args) if args.update else install(args)
     except InstallError as error:
         sys.exit('install: %s' % error)
 

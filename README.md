@@ -151,7 +151,13 @@ install:
 * **Self-signed** (default): browsers warn about the certificate until it is trusted on the computers that open the site (import `/etc/neverdie/tls/neverdie.crt`). Fine on a private network.
 * **Let's Encrypt** (`certificate: letsencrypt`): a certificate trusted by browsers, for a public domain name that points to this server, with port 80 reachable from the Internet. certbot is installed when missing, asks you to accept the Let's Encrypt terms the first time, and renews the certificate by itself (nginx is reloaded after each renewal).
 
-Run `make install` again after an update (`git pull`): it rebuilds the UI, updates the configuration and restarts the app. Options: `--dry-run DIR` writes the nginx site and the service to `DIR` and prints the commands without changing anything (works on any system), `--no-service` leaves the app out (nginx only), `--renew-certificate` makes a new self-signed certificate. `make uninstall` removes the service, the nginx site and `/var/www/neverdie` (it keeps nginx, the certificates, the database and `.venv`).
+**Update** an installed Neverdie with:
+```
+make update
+```
+(or `python scripts/install.py --update`). It pulls the new version (`git pull --ff-only`, skipped with `--no-pull` or outside a git checkout), updates `.venv`, rebuilds the UI (running `npm ci` again when `package-lock.json` changed), publishes it to `/var/www/neverdie` and restarts the `neverdie` service, then checks that the site answers. It keeps the configuration as installed: the nginx site, the certificate, the systemd unit and `etc/neverdie.yml` are not changed (a local change to `etc/neverdie.yml` that the new version also changes stops `git pull`: keep your settings in a file outside the checkout with `NEVERDIE_CONFIG`). It refuses to go on when `server.host` or `server.port` changed since `make install` (nginx would forward the API to the old address), and tells when an `install` setting changed: run `make install` to apply those.
+
+Run `make install` again to apply a new configuration. Options: `--dry-run DIR` writes the nginx site and the service to `DIR` and prints the commands without changing anything (works on any system), `--no-service` leaves the app out (nginx only), `--renew-certificate` makes a new self-signed certificate. `make uninstall` removes the service, the nginx site and `/var/www/neverdie` (it keeps nginx, the certificates, the database and `.venv`).
 
 Logs: `journalctl -u neverdie -f`. With SELinux enforcing, `make install` allows nginx to connect to the app (`httpd_can_network_connect`).
 

@@ -136,11 +136,23 @@ jobs:
           test "$(curl -sk -o /dev/null -w '%{http_code}' https://127.0.0.1/dashboard)" = 200
           systemctl is-active neverdie
 
-      - name: make install again (update) keeps the certificate
+      - name: make install again keeps the certificate
         run: |
           before=$(sha256sum /etc/neverdie/tls/neverdie.crt)
           make install
           test "$before" = "$(sha256sum /etc/neverdie/tls/neverdie.crt)"
+
+      - name: make update restarts the app and keeps the configuration
+        run: |
+          set -x
+          files="/etc/neverdie/tls/neverdie.crt /etc/nginx/sites-available/neverdie /etc/systemd/system/neverdie.service"
+          before=$(sha256sum $files)
+          started=$(systemctl show -p ActiveEnterTimestampMonotonic --value neverdie)
+          make update
+          test "$before" = "$(sha256sum $files)"
+          test "$(systemctl show -p ActiveEnterTimestampMonotonic --value neverdie)" != "$started"
+          test "$(curl -sk -o /dev/null -w '%{http_code}' https://127.0.0.1/api/auth)" = 401
+          curl -sSk https://127.0.0.1/ | grep -q '<app-root'
 
       - name: make uninstall
         run: |

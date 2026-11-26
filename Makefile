@@ -4,11 +4,15 @@ else
 PYTHON ?= python3
 endif
 
-.PHONY: serve serve-api venv run install uninstall
+.PHONY: serve serve-api venv run install update uninstall
 
 ## Production install on Linux: nginx with HTTPS serving the built UI, the app as a systemd service
 install:
 	$(PYTHON) scripts/install.py
+
+## Update an installed Neverdie (git pull, .venv, UI) and restart its service; keeps the configuration
+update:
+	$(PYTHON) scripts/install.py --update
 
 ## Remove what make install added (keeps the certificates, the database and .venv)
 uninstall:

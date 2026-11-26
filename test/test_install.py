@@ -319,3 +319,141 @@ def test_server_names_as_a_yaml_list(clean_config, monkeypatch, tmp_path):
 def test_uninstall_without_install(dry_run, capsys):
     assert install.main(['--uninstall', '--dry-run', str(dry_run)]) == 0
     assert 'nothing to remove' in capsys.readouterr().out
+
+
+def installed(tmp_path, **changes):
+    """The state file of an earlier make install of monitor.example.com on port 8443."""
+    state = {'site': '/etc/nginx/sites-available/neverdie', 'link': '/etc/nginx/sites-enabled/neverdie',
+             'service': install.SERVICE_FILE, 'web_root': install.WEB_ROOT, 'certificate': 'self-signed',
+             'server_name': 'monitor.example.com', 'host': '127.0.0.1', 'port': 5000,
+             'http_port': 80, 'https_port': 8443, 'disabled_default_site': False}
+    state.update(changes)
+    (tmp_path / 'install.json').write_text(json.dumps(state))
+
+
+def test_install_records_what_update_checks(dry_run):
+    install.main(['--dry-run', str(dry_run)])
+    state = json.loads((dry_run / 'install.json').read_text())
+    assert {key: state[key] for key in ('host', 'port', 'http_port', 'https_port')} == {
+        'host': '127.0.0.1', 'port': 5000, 'http_port': 80, 'https_port': 8443}
+
+
+def test_update_publishes_the_ui_and_restarts_the_service_only(dry_run, tmp_path, capsys):
+    installed(tmp_path)
+    assert install.main(['--update', '--no-pull', '--dry-run', str(dry_run)]) == 0
+    output = capsys.readouterr().out
+    assert 'would run: mv /var/www/neverdie.new /var/www/neverdie' in output
+    assert 'would run: systemctl restart neverdie' in output
+    # The configuration stays as installed: no nginx site, unit, certificate or state written.
+    assert not dry_run.exists() or not list(dry_run.iterdir())
+    for command in ('would write', 'openssl', 'nginx -t', 'systemctl reload nginx', 'daemon-reload', 'enable'):
+        assert command not in output
+    assert 'note:' not in output
+
+
+def test_update_without_service_does_not_restart_it(dry_run, tmp_path, capsys):
+    installed(tmp_path, service=None)
+    assert install.main(['--update', '--no-pull', '--dry-run', str(dry_run)]) == 0
+    assert 'systemctl' not in capsys.readouterr().out
+
+
+def test_update_needs_an_install(dry_run):
+    with pytest.raises(SystemExit, match='run make install first'):
+        install.main(['--update', '--dry-run', str(dry_run)])
+
+
+def test_update_refuses_a_new_app_address(dry_run, tmp_path, monkeypatch):
+    installed(tmp_path)
+    monkeypatch.setenv('NEVERDIE_PORT', '5001')
+    with pytest.raises(SystemExit, match=r'server\.port.*run make install'):
+        install.main(['--update', '--no-pull', '--dry-run', str(dry_run)])
+
+
+def test_update_tells_about_site_settings_it_does_not_apply(dry_run, tmp_path, monkeypatch, capsys):
+    installed(tmp_path, server_name='old.example.com')
+    assert install.main(['--update', '--no-pull', '--dry-run', str(dry_run)]) == 0
+    assert 'install.server_name' in capsys.readouterr().out
+
+
+def test_update_of_an_older_install_compares_what_it_recorded(dry_run, tmp_path, capsys):
+    installed(tmp_path)
+    state = json.loads((tmp_path / 'install.json').read_text())
+    for key in ('host', 'port', 'http_port', 'https_port'):
+        del state[key]
+    (tmp_path / 'install.json').write_text(json.dumps(state))
+    assert install.main(['--update', '--no-pull', '--dry-run', str(dry_run)]) == 0
+    assert 'note:' not in capsys.readouterr().out
+
+
+def test_update_and_uninstall_together_are_refused():
+    with pytest.raises(SystemExit):
+        install.main(['--update', '--uninstall', '--dry-run', 'out'])
+
+
+def test_client_dependencies_are_installed_again_when_the_lock_changes(tmp_path):
+    lock = tmp_path / 'package-lock.json'
+    lock.write_text('{}')
+    assert install.client_dependencies_outdated(str(tmp_path))  # no node_modules
+    installed_lock = tmp_path / 'node_modules' / '.package-lock.json'
+    installed_lock.parent.mkdir()
+    installed_lock.write_text('{}')
+    os.utime(lock, (1_000, 1_000))
+    os.utime(installed_lock, (2_000, 2_000))
+    assert not install.client_dependencies_outdated(str(tmp_path))
+    os.utime(lock, (3_000, 3_000))  # git pull brought a new lock
+    assert install.client_dependencies_outdated(str(tmp_path))
+
+
+class Git:
+    """Fake git of pull_sources: HEAD moves from `before` to `after` on pull."""
+
+    def __init__(self, before, after, upstream=True, pull_fails=False):
+        self.head, self.after, self.upstream, self.pull_fails = before, after, upstream, pull_fails
+        self.commands = []
+
+    def __call__(self, command, check=True, capture=False, **kwargs):
+        self.commands.append(command[1:])
+        code, out = 0, ''
+        if command[1:2] == ['pull']:
+            code = 1 if self.pull_fails else 0
+            if not self.pull_fails:
+                self.head = self.after
+        elif '@{upstream}' in command:
+            code = 0 if self.upstream else 128
+        elif command[1:] == ['rev-parse', 'HEAD']:
+            out = self.head
+        return install.subprocess.CompletedProcess(command, code, out, 'error: local changes')
+
+
+@pytest.fixture
+def git_checkout(monkeypatch, tmp_path):
+    (tmp_path / '.git').mkdir()
+    monkeypatch.setattr(install, 'ROOT', str(tmp_path))
+    monkeypatch.setattr(install.shutil, 'which', lambda name: '/usr/bin/' + name)
+    installer = install.Installer()
+
+    def use(git):
+        monkeypatch.setattr(installer, 'run', git)
+        return installer
+    return use
+
+
+def test_pull_sources(git_checkout):
+    assert install.pull_sources(git_checkout(Git('a' * 40, 'b' * 40))) is True
+    assert install.pull_sources(git_checkout(Git('a' * 40, 'a' * 40))) is False
+    git = Git('a' * 40, 'b' * 40, upstream=False)
+    assert install.pull_sources(git_checkout(git)) is False
+    assert ['pull', '--ff-only'] not in git.commands
+    with pytest.raises(install.InstallError, match='NEVERDIE_CONFIG'):
+        install.pull_sources(git_checkout(Git('a' * 40, 'b' * 40, pull_fails=True)))
+
+
+def test_update_runs_the_new_scripts_after_a_pull(dry_run, tmp_path, monkeypatch):
+    installed(tmp_path)
+    monkeypatch.setattr(install, 'pull_sources', lambda installer: True)
+    calls = []
+    monkeypatch.setattr(install.os, 'execv', lambda program, argv: calls.append(argv) or sys.exit(0))
+    with pytest.raises(SystemExit):
+        install.main(['--update', '--dry-run', str(dry_run)])
+    [argv] = calls
+    assert argv[1].endswith('install.py') and argv[2:] == ['--update', '--dry-run', str(dry_run), '--no-pull']
