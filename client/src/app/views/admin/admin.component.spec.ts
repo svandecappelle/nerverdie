@@ -1,7 +1,8 @@
 import { HttpErrorResponse } from '@angular/common/http';
 import { ComponentFixture, TestBed } from '@angular/core/testing';
-import { of, throwError } from 'rxjs';
+import { NEVER, of, throwError } from 'rxjs';
 
+import { SecurityService } from '../../services/security.service';
 import { StorageService, StorageStatus } from '../../services/storage.service';
 import { AdminComponent } from './admin.component';
 
@@ -39,7 +40,14 @@ describe('AdminComponent', () => {
 
   beforeEach(() => {
     service = { status: vi.fn(), setLimit: vi.fn(), compact: vi.fn() };
-    TestBed.configureTestingModule({ providers: [{ provide: StorageService, useValue: service }] });
+    // The security panel has its own tests: keep it quiet here.
+    const security = { status: () => NEVER, history: () => NEVER };
+    TestBed.configureTestingModule({
+      providers: [
+        { provide: StorageService, useValue: service },
+        { provide: SecurityService, useValue: security },
+      ],
+    });
   });
 
   const el = () => fixture.nativeElement as HTMLElement;
@@ -51,7 +59,7 @@ describe('AdminComponent', () => {
     expect(el().textContent).toContain('5 MB used, no size limit');
     expect(el().textContent).toContain('6 MB');
     expect(el().textContent).toContain('1,234');
-    expect(el().querySelector('mat-progress-bar')).toBeNull();
+    expect(el().querySelector('.usage mat-progress-bar')).toBeNull();
     expect(component().form.getRawValue().limited).toBe(false);
     expect(component().form.controls.limitMb.disabled).toBe(true);
   });
@@ -60,7 +68,7 @@ describe('AdminComponent', () => {
     await create(storageStatus({ limit_mb: 10, limit_bytes: 10 * MB, used_bytes: 9.5 * MB }));
 
     expect(el().textContent).toContain('used of 10 MB (95%)');
-    expect(el().querySelector('mat-progress-bar')?.getAttribute('aria-valuenow')).toBe('95');
+    expect(el().querySelector('.usage mat-progress-bar')?.getAttribute('aria-valuenow')).toBe('95');
     expect(component().form.getRawValue()).toEqual({ limited: true, limitMb: 10 });
     expect(component().form.controls.limitMb.enabled).toBe(true);
   });

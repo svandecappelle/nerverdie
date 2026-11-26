@@ -154,3 +154,8 @@ class LoginThrottle(object):
     def reset(self, key):
         with self._lock:
             self._failures.pop(key, None)
+
+    def clear(self):
+        """Forget every address."""
+        with self._lock:
+            self._failures.clear()

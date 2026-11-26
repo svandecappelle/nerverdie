@@ -14,6 +14,7 @@ import pytest  # noqa: E402
 import start  # noqa: E402
 from server.application import APP  # noqa: E402
 from server.models.metrics import Cpu, CpuCore, Measure  # noqa: E402
+from server.models.security import LoginEvent  # noqa: E402
 from server.models.setting import Setting  # noqa: E402
 from server.models.user import User  # noqa: E402
 from server.storage.main import Datastore  # noqa: E402
@@ -28,12 +29,12 @@ start.Starter()
 @pytest.fixture
 def client():
     Datastore()
-    for model in (CpuCore, Measure, Cpu, User, Setting):
+    for model in (CpuCore, Measure, Cpu, User, Setting, LoginEvent):
         model.delete().execute()
     user = User(username='alice')
     user.set_password(PASSWORD)
     user.save()
-    middleware.LOGIN_THROTTLE.reset('127.0.0.1')
+    middleware.LOGIN_THROTTLE.clear()
     with APP.test_client() as test_client:
         yield test_client
 

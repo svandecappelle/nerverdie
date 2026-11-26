@@ -34,7 +34,8 @@ export class LoginComponent {
   });
 
   readonly loginInProgress = signal(false);
-  readonly loginFailed = signal(false);
+  /** Why the last login was refused, empty when it was not. */
+  readonly loginError = signal('');
   readonly showPassword = signal(false);
 
   onSubmit(): void {
@@ -44,10 +45,10 @@ export class LoginComponent {
     }
     const { userName, password } = this.form.getRawValue();
     this.loginInProgress.set(true);
-    this.loginFailed.set(false);
-    this.authService.login(userName, password).subscribe((success) => {
+    this.loginError.set('');
+    this.authService.login(userName, password).subscribe((error) => {
       this.loginInProgress.set(false);
-      this.loginFailed.set(!success);
+      this.loginError.set(error ?? '');
     });
   }
 }

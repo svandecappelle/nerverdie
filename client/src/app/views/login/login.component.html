@@ -41,8 +41,8 @@
           <mat-error>Please inform your password</mat-error>
         </mat-form-field>
 
-        @if (loginFailed()) {
-          <p class="login-error" role="alert">Invalid credentials</p>
+        @if (loginError(); as error) {
+          <p class="login-error" role="alert">{{ error }}</p>
         }
 
         <button mat-flat-button class="submit" type="submit" [disabled]="loginInProgress()">Login</button>

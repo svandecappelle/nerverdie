@@ -50,6 +50,23 @@ Environment variables:
 
 After 5 failed logins from one address within 5 minutes, further attempts are refused (HTTP 429).
 
+## Login security
+Every login attempt is journaled for 90 days (time, user name, address, result). The *Login security* panel of the administration screen shows:
+* the successful, failed and refused logins of the last 24 hours and the locked accounts,
+* a chart of the connections over the last 24 hours, 7 days or 30 days,
+* the last login attempts,
+* the account lock policy, and every account with its failed logins and lock.
+
+Lock policy: after a number of failed logins in a row (5 by default), an account is locked for a while (15 minutes by default) or until an administrator unlocks it. A successful login resets the count. While an account is locked, its logins are refused even with the right password (HTTP 423). The per address limit above still applies on top of it: the account lock also stops attempts spread over many addresses.
+
+An administrator unlocks an account from the panel (*Unlock*), or from the command line, which also works when every administrator is locked out:
+```
+uv run python manage.py unlock-user <username>
+```
+(`set-password` unlocks the account too, and `list-users` shows the locked ones.)
+
+The same is available through the API (logged-in users): `GET /api/admin/security`, `PUT /api/admin/security` with `{"max_attempts": 5, "lock_minutes": 15}` (`max_attempts` `null`: never lock, `lock_minutes` `0`: until unlocked), `POST /api/admin/security/unlock` with `{"username": "..."}` and `GET /api/admin/security/history?from=<ms>&to=<ms>`.
+
 Every response carries security headers (Content-Security-Policy, X-Frame-Options, X-Content-Type-Options, Referrer-Policy), plus Strict-Transport-Security when `NEVERDIE_COOKIE_SECURE=1`. API responses are never cached.
 
 ## Dashboard time range

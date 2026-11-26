@@ -40,7 +40,7 @@ import {
 // Only the Chart.js parts used by the dashboard are bundled.
 Chart.register(LineController, LineElement, PointElement, LinearScale, Filler, Legend, Title, Tooltip);
 
-export type ChartUnit = 'bytes' | 'bytes/s' | 'percent' | 'number';
+export type ChartUnit = 'bytes' | 'bytes/s' | 'percent' | 'count' | 'number';
 
 /** Narrowest drag (px) taken as a zoom selection rather than a click. */
 const MIN_SELECTION = 6;
@@ -256,12 +256,20 @@ function applyUnit(options: ChartOptions, unit: ChartUnit): void {
         ? (value: number) => formatBytes(value)
         : unit === 'bytes/s'
           ? (value: number) => `${formatBytes(value)}/s`
-          : undefined;
+          : unit === 'count'
+            ? (value: number) => String(Math.round(value))
+            : undefined;
   if (!format || !y?.ticks || !tooltip) {
     return;
   }
   if (unit === 'percent') {
     y.max = 100;
+  }
+  if (unit === 'count') {
+    // Whole numbers only, with some room above a flat line of zeros.
+    // The y axis is linear (see buildChartConfig): its ticks take a precision.
+    (y.ticks as { precision?: number }).precision = 0;
+    y.suggestedMax = 4;
   }
   // Loads and sizes are never negative, even when every value is zero.
   y.min = 0;

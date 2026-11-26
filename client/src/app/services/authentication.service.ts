@@ -1,9 +1,28 @@
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Injectable, inject } from '@angular/core';
 import { Router } from '@angular/router';
 import { BehaviorSubject, Observable, catchError, map, of, shareReplay, tap } from 'rxjs';
 
 import { User } from '../models/user';
+
+export const INVALID_CREDENTIALS = 'Invalid credentials';
+
+/** Message shown on the login page for a refused login. */
+export function loginErrorMessage(error: unknown): string {
+  if (!(error instanceof HttpErrorResponse)) {
+    return INVALID_CREDENTIALS;
+  }
+  if (error.status === 423) {
+    const until = typeof error.error?.locked_until === 'string' ? new Date(error.error.locked_until.replace(' ', 'T')) : null;
+    return until && !Number.isNaN(until.getTime())
+      ? `This account is locked after too many failed logins. Retry after ${until.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`
+      : 'This account is locked after too many failed logins. Ask an administrator to unlock it.';
+  }
+  if (error.status === 429) {
+    return 'Too many failed logins from this address. Retry in a few minutes.';
+  }
+  return INVALID_CREDENTIALS;
+}
 
 interface AuthResponse {
   connected?: boolean;
@@ -39,20 +58,20 @@ export class AuthenticationService {
     return this.loggedIn.value ? of(true) : this.sessionCheck$;
   }
 
-  /** Emits `true` on success (and navigates home), `false` on bad credentials. */
-  login(username: string, password: string): Observable<boolean> {
+  /** Emits `null` on success (and navigates home), else the reason of the refusal. */
+  login(username: string, password: string): Observable<string | null> {
     return this.http.post<AuthResponse>('/api/auth/login', { username, password }).pipe(
       map((data) => {
         if (!data?.user) {
-          return false;
+          return INVALID_CREDENTIALS;
         }
         const user: User = { id: data.user.uid, username };
         localStorage.setItem('currentUser', JSON.stringify(user));
         this.loggedIn.next(true);
         void this.router.navigate(['/']);
-        return true;
+        return null;
       }),
-      catchError(() => of(false)),
+      catchError((error) => of(loginErrorMessage(error))),
     );
   }
 

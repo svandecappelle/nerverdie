@@ -13,12 +13,13 @@ import { EMPTY, Observable, catchError, exhaustMap, interval, startWith } from '
 
 import { formatBytes } from '../../components/indicator/format';
 import { StorageService, StorageStatus } from '../../services/storage.service';
+import { SecurityPanelComponent } from './security-panel.component';
 
 /** Refresh period of the storage status. */
 export const STORAGE_REFRESH = 10_000;
 const LOAD_ERROR = 'The storage status could not be loaded.';
 
-/** Administration screen: database size, size limit and compaction. */
+/** Administration screen: database size, size limit, compaction and login security. */
 @Component({
   selector: 'app-admin',
   imports: [
@@ -32,6 +33,7 @@ const LOAD_ERROR = 'The storage status could not be loaded.';
     MatInputModule,
     MatProgressBarModule,
     MatSlideToggleModule,
+    SecurityPanelComponent,
   ],
   templateUrl: './admin.component.html',
   styleUrl: './admin.component.scss',

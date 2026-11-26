@@ -110,7 +110,7 @@ test('the admin screen shows the database size and sets its limit', async ({ pag
   await expect(limit).toBeDisabled();
   await page.getByRole('switch', { name: 'Limit the database size' }).click();
   await limit.fill('40');
-  await page.getByRole('button', { name: 'Save' }).click();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByRole('status')).toHaveText(/Limit set to 40 MB\. \d+ old samples were deleted\./);
   await expect(usage).toContainText('36 MB used of 40 MB (90%)');
   await expect(page.getByRole('progressbar', { name: 'Share of the size limit in use' })).toHaveAttribute(
@@ -120,7 +120,7 @@ test('the admin screen shows the database size and sets its limit', async ({ pag
 
   // An invalid limit is not sent.
   await limit.fill('0');
-  await page.getByRole('button', { name: 'Save' }).click();
+  await page.getByRole('button', { name: 'Save', exact: true }).click();
   await expect(page.getByText('A whole number of MB, at least 1')).toBeVisible();
 
   // Compacting gives the free pages back.
@@ -292,4 +292,67 @@ test('the dashboard can be customized and keeps its layout', async ({ page }) =>
   await editor.getByRole('button', { name: 'Reset' }).click();
   await expect(chartTitles).toHaveText(['CPU', 'Memory', 'Network']);
   await expect(page.locator('app-indicator')).toHaveCount(6);
+});
+
+test('a locked account is refused, and the admin screen shows and unlocks it', async ({ page }) => {
+  await page.goto('/login');
+  await page.getByLabel('User').fill('eve');
+  await page.getByLabel('Password', { exact: true }).fill('whatever');
+  await page.getByRole('button', { name: 'Login' }).click();
+  await expect(page.getByRole('alert')).toHaveText(
+    'This account is locked after too many failed logins. Ask an administrator to unlock it.',
+  );
+
+  await page.getByLabel('User').fill('admin');
+  await page.getByLabel('Password', { exact: true }).fill('password');
+  await page.getByRole('button', { name: 'Login' }).click();
+  await expect(page).toHaveURL(/\/$/);
+  await page.getByRole('link', { name: 'Administration' }).click();
+
+  const security = page.getByRole('region', { name: 'Login security' });
+  const stats = security.getByRole('list', { name: 'Login figures' });
+  await expect(stats.getByRole('listitem')).toHaveText([
+    /14\s*Successful logins/,
+    /6\s*Failed logins/,
+    /3\s*Refused attempts/,
+    /1\s*Locked accounts/,
+  ]);
+
+  // Connection chart, drawn, with a range choice.
+  const chart = security.getByRole('img', { name: 'Connections' });
+  await expect(chart).toContainText('Successful, Failed, Refused');
+  const historySpans: number[] = [];
+  page.on('request', (request) => {
+    const url = new URL(request.url());
+    if (url.pathname === '/api/admin/security/history') {
+      historySpans.push(Number(url.searchParams.get('to')) - Number(url.searchParams.get('from')));
+    }
+  });
+  await security.getByRole('radio', { name: '7 days' }).click();
+  await expect.poll(() => historySpans.at(-1)).toBe(7 * 86400_000);
+
+  // Recent attempts.
+  const rows = security.getByRole('table').getByRole('row');
+  await expect(rows).toHaveCount(4);
+  await expect(rows.nth(1)).toContainText('203.0.113.7');
+  await expect(rows.nth(1)).toContainText('Refused: account locked');
+
+  // Lock policy: 3 failed logins, until an administrator unlocks.
+  const attempts = security.getByRole('spinbutton', { name: 'Failed logins before the lock' });
+  await expect(attempts).toHaveValue('5');
+  await attempts.fill('3');
+  await security.getByRole('switch', { name: 'Lock until an administrator unlocks it' }).click();
+  await expect(security.getByRole('spinbutton', { name: 'Lock duration' })).toBeDisabled();
+  await security.getByRole('button', { name: 'Save policy' }).click();
+  await expect(security.getByRole('status')).toHaveText('Lock policy saved.');
+
+  // Unlock eve; she can log in again (the mock only checks the lock).
+  await security.getByRole('button', { name: 'Unlock eve' }).click();
+  await expect(security.getByRole('status')).toHaveText('eve is unlocked.');
+  await expect(security.getByRole('button', { name: 'Unlock eve' })).toHaveCount(0);
+  await expect(stats.getByRole('listitem').last()).toHaveText(/0\s*Locked accounts/);
+
+  await page.reload();
+  await expect(attempts).toHaveValue('3');
+  await expect(security.getByRole('switch', { name: 'Lock until an administrator unlocks it' })).toBeChecked();
 });

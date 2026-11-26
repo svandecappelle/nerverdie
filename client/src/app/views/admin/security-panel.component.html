@@ -1,0 +1,156 @@
+<section class="panel" aria-labelledby="security-title">
+  <div class="panel-head">
+    <span class="icon" aria-hidden="true"><mat-icon>shield</mat-icon></span>
+    <div>
+      <h2 id="security-title" class="panel-title">Login security</h2>
+      <p class="panel-subtitle">Connections to Neverdie, failed logins and the account lock policy.</p>
+    </div>
+  </div>
+
+  @if (status(); as status) {
+    <ul class="stats" aria-label="Login figures">
+      @for (stat of stats(); track stat.label) {
+        <li class="stat" [class]="stat.tone">
+          <mat-icon aria-hidden="true">{{ stat.icon }}</mat-icon>
+          <span class="value">{{ stat.value }}</span>
+          <span class="label">
+            {{ stat.label }}
+            @if (stat.lastDay) {
+              <small>(24 h)</small>
+            }
+          </span>
+        </li>
+      }
+    </ul>
+
+    <div class="grid">
+      <div class="main">
+        <div class="section-head">
+          <h3 id="connections-title">Connections</h3>
+          <mat-button-toggle-group
+            [value]="rangeMs()"
+            (change)="rangeMs.set($event.value)"
+            aria-label="Connections time range"
+            hideSingleSelectionIndicator
+          >
+            @for (range of ranges; track range.ms) {
+              <mat-button-toggle [value]="range.ms">{{ range.label }}</mat-button-toggle>
+            }
+          </mat-button-toggle-group>
+        </div>
+        <app-chart
+          [series]="series()"
+          [range]="chartRange()"
+          title="Connections"
+          [showTitle]="false"
+          type="line"
+          unit="count"
+          width="100%"
+          height="240px"
+        />
+
+        <h3>Recent attempts</h3>
+        <div class="table-wrap" tabindex="0" aria-label="Recent attempts">
+          <table class="events">
+            <thead>
+              <tr>
+                <th scope="col">Time</th>
+                <th scope="col">User</th>
+                <th scope="col">Address</th>
+                <th scope="col">Result</th>
+              </tr>
+            </thead>
+            <tbody>
+              @for (event of status.recent; track $index) {
+                <tr>
+                  <td>{{ event.time | date: 'medium' }}</td>
+                  <td>{{ event.username || '—' }}</td>
+                  <td><code>{{ event.address }}</code></td>
+                  <td>
+                    <span class="outcome" [class]="event.outcome">{{ outcomes[event.outcome] }}</span>
+                  </td>
+                </tr>
+              } @empty {
+                <tr>
+                  <td colspan="4" class="empty">No login attempt yet.</td>
+                </tr>
+              }
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <div class="side">
+        <section aria-labelledby="policy-title">
+          <h3 id="policy-title">Lock policy</h3>
+          <form class="policy" [formGroup]="form" (ngSubmit)="save()">
+            <mat-slide-toggle formControlName="locking">Lock accounts after failed logins</mat-slide-toggle>
+            <mat-form-field appearance="outline" subscriptSizing="dynamic">
+              <mat-label>Failed logins before the lock</mat-label>
+              <input matInput type="number" formControlName="maxAttempts" min="1" step="1" />
+              <mat-error>
+                A whole number from {{ status.limits.min_attempts }} to {{ status.limits.max_attempts }}
+              </mat-error>
+            </mat-form-field>
+            <mat-slide-toggle formControlName="untilUnlocked">Lock until an administrator unlocks it</mat-slide-toggle>
+            <mat-form-field appearance="outline" subscriptSizing="dynamic">
+              <mat-label>Lock duration</mat-label>
+              <input matInput type="number" formControlName="lockMinutes" min="1" step="1" />
+              <span matTextSuffix>minutes</span>
+              <mat-error>A whole number of minutes, at most {{ status.limits.max_lock_minutes }}</mat-error>
+            </mat-form-field>
+            <p class="hint">
+              A successful login resets the count. Besides, an address is refused for
+              {{ status.throttle.window_seconds / 60 }} minutes after {{ status.throttle.max_failures }} failed logins.
+            </p>
+            <button mat-flat-button type="submit" [disabled]="busy()">
+              <mat-icon>save</mat-icon>
+              Save policy
+            </button>
+          </form>
+        </section>
+
+        <section aria-labelledby="accounts-title">
+          <h3 id="accounts-title">Accounts</h3>
+          <ul class="accounts">
+            @for (account of status.accounts; track account.username) {
+              <li [class.locked]="account.locked">
+                <mat-icon aria-hidden="true">{{ account.locked ? 'lock' : 'person' }}</mat-icon>
+                <span class="who">
+                  <strong>{{ account.username }}</strong>
+                  <span class="state">
+                    {{ describeAccount(account) }}
+                    @if (account.locked && account.locked_until) {
+                      {{ account.locked_until | date: 'short' }}
+                    }
+                  </span>
+                </span>
+                @if (account.locked || account.failed_logins) {
+                  <button
+                    mat-stroked-button
+                    type="button"
+                    (click)="unlock(account)"
+                    [disabled]="busy()"
+                    [attr.aria-label]="(account.locked ? 'Unlock ' : 'Reset failed logins of ') + account.username"
+                  >
+                    <mat-icon>{{ account.locked ? 'lock_open' : 'restart_alt' }}</mat-icon>
+                    {{ account.locked ? 'Unlock' : 'Reset' }}
+                  </button>
+                }
+              </li>
+            }
+          </ul>
+        </section>
+      </div>
+    </div>
+  } @else if (!error()) {
+    <mat-progress-bar class="loading" mode="indeterminate" aria-label="Loading the login security status" />
+  }
+
+  @if (message()) {
+    <p class="message" role="status">{{ message() }}</p>
+  }
+  @if (error()) {
+    <p class="error" role="alert">{{ error() }}</p>
+  }
+</section>
