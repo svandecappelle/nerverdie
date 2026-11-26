@@ -5,12 +5,14 @@
     python scripts/serve.py            # API on :5000 + UI on :4200
     python scripts/serve.py --no-ui    # API only
 
-The UI (ng serve) proxies /api to the API on 127.0.0.1:5000. Ctrl+C stops
+The ports come from the Neverdie configuration (etc/neverdie.yml,
+NEVERDIE_PORT, NEVERDIE_UI_PORT...). The UI (ng serve) proxies /api to the API. Ctrl+C stops
 both, including their child processes (metrics collector, ng workers).
 If one of them exits, the other is stopped too.
 """
 
 import argparse
+import json
 import os
 import re
 import shutil
@@ -112,10 +114,33 @@ def _kill_with_us(process):
     kernel32.AssignProcessToJobObject(_JOB, int(process._handle))
 
 
-def start(name, command, cwd):
+def read_settings(python):
+    """Host, ports... resolved by server/settings/config.py, run with the app's Python (it needs PyYAML)."""
+    result = subprocess.run(python + ['-m', 'server.settings.config'], cwd=ROOT, capture_output=True,
+                            text=True, encoding='utf-8', errors='replace')
+    if result.returncode != 0:
+        fail((result.stderr or result.stdout).strip() or 'could not read the configuration')
+    try:
+        return json.loads(result.stdout.strip().splitlines()[-1])
+    except (ValueError, IndexError):
+        fail('unexpected configuration output: %s' % result.stdout.strip())
+
+
+def local_url(host, port):
+    """URL to reach a server listening on host:port from this machine (same as config.local_url)."""
+    if host in ('0.0.0.0', '', '*'):  # noqa: S104 (we connect to it, not listen)
+        host = '127.0.0.1'
+    elif host == '::':
+        host = '::1'
+    if ':' in host:
+        host = '[%s]' % host
+    return 'http://%s:%d' % (host, port)
+
+
+def start(name, command, cwd, env=None):
     """Start a process whose output is printed with a [name] prefix."""
     # Python children print UTF-8 (otherwise Windows uses the ANSI code page).
-    options = {'env': dict(os.environ, PYTHONUTF8='1', PYTHONUNBUFFERED='1')}
+    options = {'env': dict(os.environ, PYTHONUTF8='1', PYTHONUNBUFFERED='1', **(env or {}))}
     if IS_WINDOWS:
         options['creationflags'] = subprocess.CREATE_NEW_PROCESS_GROUP
     else:
@@ -191,13 +216,17 @@ def main(argv=None):
             if subprocess.run([npm, 'ci'], cwd=CLIENT).returncode != 0:
                 fail('npm ci failed')
 
+    settings = read_settings(python)
+    api_url = local_url(settings['host'], settings['port'])
     try:
-        processes['api'] = start('api', python + ['start.py', '-P', '5000'], ROOT)
+        # start.py reads the same configuration (etc/neverdie.yml, NEVERDIE_*).
+        processes['api'] = start('api', python + ['start.py'], ROOT)
         if not args.no_ui:
-            processes['ui'] = start('ui', [npm, 'start'], CLIENT)
-            print('API: http://127.0.0.1:5000  -  UI: http://localhost:4200  (Ctrl+C to stop)')
+            processes['ui'] = start('ui', [npm, 'start', '--', '--port', str(settings['ui_port'])], CLIENT,
+                                    env={'NEVERDIE_API_URL': api_url})
+            print('API: %s  -  UI: http://localhost:%d  (Ctrl+C to stop)' % (api_url, settings['ui_port']))
         else:
-            print('API: http://127.0.0.1:5000  (Ctrl+C to stop)')
+            print('API: %s  (Ctrl+C to stop)' % api_url)
 
         # Wait until one of the processes exits (see wait_exit about Ctrl+C).
         while True:

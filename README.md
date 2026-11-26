@@ -27,7 +27,7 @@ uv sync
   ```
   make serve
   ```
-  The API runs on http://127.0.0.1:5000 and the UI dev server on http://localhost:4200 (it forwards `/api` to the API). Requires Node.js 22 or later; client dependencies are installed on first run. `make serve-api` starts the API only. Ctrl+C stops everything.
+  The API runs on http://127.0.0.1:5000 and the UI dev server on http://localhost:4200 (it forwards `/api` to the API); see [Configuration](#configuration-address-and-ports) to change the ports. Requires Node.js 22 or later; client dependencies are installed on first run. `make serve-api` starts the API only. Ctrl+C stops everything.
   Without make (or on Windows without it, `scoop install make` / `choco install make`): ```python scripts/serve.py``` (`--no-ui` for the API only).
 * Run app:
   * In web service: ```uv run python start.py``` (options: `-H <host>`, `-P <port>`, `-t <threads>`), served by the waitress WSGI server
@@ -46,6 +46,25 @@ GitHub Actions (`.github/workflows/ci.yml`) runs on every push to `master`, on p
 
 `uv sync --locked` fails when `uv.lock` is out of date with `pyproject.toml`: run `uv lock` and commit it.
 Dependabot (`.github/dependabot.yml`) opens weekly update pull requests for the Python dependencies, the client npm packages (Angular major versions excluded: use `ng update`) and the actions.
+
+## Configuration (address and ports)
+The web service listens on `127.0.0.1:5000` with 8 request threads by default. Each setting comes from, by priority:
+1. the command line: `python start.py -H <host> -P <port> -t <threads>` (or `python scripts/run.py -P <port>`);
+2. an environment variable: `NEVERDIE_HOST`, `NEVERDIE_PORT`, `NEVERDIE_THREADS`;
+3. the configuration file `etc/neverdie.yml` (or the file named by `NEVERDIE_CONFIG`);
+4. the default.
+
+```yaml
+server:
+  host: 127.0.0.1   # 0.0.0.0: every interface
+  port: 5000
+  threads: 8
+dev:
+  ui_port: 4200     # Angular dev server of `make serve` (or NEVERDIE_UI_PORT)
+```
+Every setting of `etc/neverdie.yml` is commented out at first: uncomment the ones to change. A wrong value or an unknown setting stops the start with a message naming it. `python -m server.settings.config` prints the resulting values.
+
+`make serve` follows the same configuration: the API starts on the configured port, the UI dev server on `dev.ui_port`, and its proxy forwards `/api` to the API port (`client/proxy.conf.mjs`, `NEVERDIE_API_URL`).
 
 ## Users and security
 There are no default credentials. Create an account before logging in:

@@ -1,0 +1,24 @@
+# Neverdie configuration.
+#
+# Uncomment a setting to change it. By priority, a value comes from:
+#   1. the command line:  python start.py -H <host> -P <port> -t <threads>
+#   2. an environment variable: NEVERDIE_HOST, NEVERDIE_PORT, NEVERDIE_THREADS, NEVERDIE_UI_PORT
+#   3. this file (or the one NEVERDIE_CONFIG points to)
+#   4. the default shown below.
+# `python -m server.settings.config` prints the resulting values.
+
+server:
+  # Interface to listen on. Keep 127.0.0.1 behind a reverse proxy;
+  # 0.0.0.0 listens on every interface (the whole network can connect).
+  # host: 127.0.0.1
+
+  # Port of the web service (API and user interface).
+  # port: 5000
+
+  # Request threads of the waitress server (1 to 256).
+  # threads: 8
+
+dev:
+  # Port of the Angular dev server started by `make serve`
+  # (it forwards /api to the port above).
+  # ui_port: 4200

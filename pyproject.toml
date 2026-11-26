@@ -24,6 +24,8 @@ dependencies = [
     "schedule>=1.2",
     "scapy>=2.6",
     "netaddr>=1.3",
+    # Configuration file (etc/neverdie.yml).
+    "pyyaml>=6.0.2",
     # Production WSGI server (works on Windows and Linux).
     "waitress>=3.0.1",
     # curses is not shipped with Python on Windows (console.py).
@@ -63,5 +65,5 @@ ignore = [
 ]
 
 [tool.ruff.lint.per-file-ignores]
-"test/**" = ["S105", "S106"]  # test passwords
+"test/**" = ["S104", "S105", "S106"]  # 0.0.0.0 as a configuration value, test passwords
 "scripts/**" = ["S603", "S606", "S607"]  # launchers: fixed commands (uv, npm, pip, the app), no shell
