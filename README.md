@@ -125,6 +125,36 @@ The limit applies to the data held in the database. Deleted rows leave free page
 The same settings are available through the API (logged-in users): `GET /api/admin/storage`, `PUT /api/admin/storage` with `{"limit_mb": 500}` (`null` or `0`: unlimited) and `POST /api/admin/storage/compact`.
 
 ## Production deployment
+### Automatic: `make install` (Linux, nginx, HTTPS)
+On a Linux server with systemd (Debian, Ubuntu, Fedora, RHEL...), run as the user that will run Neverdie (not root, it asks for sudo when needed):
+```
+make install
+```
+(or `python scripts/install.py`). It:
+1. creates or updates `.venv` and builds the UI (`npm ci`, `npm run build`; Node.js 22 or later, or `--skip-build` with a `client/dist` built elsewhere);
+2. installs nginx when missing (apt, dnf, yum or zypper);
+3. copies the built UI to `/var/www/neverdie`: nginx serves it, and forwards `/api` to the app on `127.0.0.1:<server.port>`;
+4. creates the certificate in `/etc/neverdie/tls`: self-signed by default, for the server name, `localhost` and `127.0.0.1`, valid 825 days and renewed by `make install` 30 days before it expires;
+5. writes the nginx site (`/etc/nginx/sites-available/neverdie`, or `conf.d/neverdie.conf`): HTTP redirects to HTTPS, TLS 1.2 and 1.3, the app's security headers plus HSTS, long caching of the build files. On Debian and Ubuntu the stock default site is turned off;
+6. installs the systemd service `neverdie` (running `start.py` from `.venv` with `NEVERDIE_COOKIE_SECURE=1` and `NEVERDIE_TRUSTED_PROXIES=1`), starts it, and checks that the site answers over HTTPS.
+
+Settings, in the `install` section of `etc/neverdie.yml` (or the variables in brackets):
+```yaml
+install:
+  server_name: monitor.example.com  # (NEVERDIE_SERVER_NAME) default: the name of this machine
+  http_port: 80                     # (NEVERDIE_HTTP_PORT)
+  https_port: 443                   # (NEVERDIE_HTTPS_PORT)
+  certificate: self-signed          # (NEVERDIE_CERTIFICATE) or letsencrypt
+  email: ops@example.com            # (NEVERDIE_LETSENCRYPT_EMAIL) Let's Encrypt notices, optional
+```
+* **Self-signed** (default): browsers warn about the certificate until it is trusted on the computers that open the site (import `/etc/neverdie/tls/neverdie.crt`). Fine on a private network.
+* **Let's Encrypt** (`certificate: letsencrypt`): a certificate trusted by browsers, for a public domain name that points to this server, with port 80 reachable from the Internet. certbot is installed when missing, asks you to accept the Let's Encrypt terms the first time, and renews the certificate by itself (nginx is reloaded after each renewal).
+
+Run `make install` again after an update (`git pull`): it rebuilds the UI, updates the configuration and restarts the app. Options: `--dry-run DIR` writes the nginx site and the service to `DIR` and prints the commands without changing anything (works on any system), `--no-service` leaves the app out (nginx only), `--renew-certificate` makes a new self-signed certificate. `make uninstall` removes the service, the nginx site and `/var/www/neverdie` (it keeps nginx, the certificates, the database and `.venv`).
+
+Logs: `journalctl -u neverdie -f`. With SELinux enforcing, `make install` allows nginx to connect to the app (`httpd_can_network_connect`).
+
+### Manual
 Keep the app listening on `127.0.0.1` (the default) and put a TLS reverse proxy in front of it. Example with [Caddy](https://caddyserver.com/), which obtains the certificate automatically:
 ```
 monitor.example.com {

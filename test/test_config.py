@@ -6,13 +6,14 @@ import pytest
 from server.application import server_settings
 from server.settings import config
 
-DEFAULTS = {'host': '127.0.0.1', 'port': 5000, 'threads': 8, 'ui_port': 4200}
+INSTALL_DEFAULTS = {'server_name': '', 'http_port': 80, 'https_port': 443, 'certificate': 'self-signed', 'email': ''}
+DEFAULTS = {'host': '127.0.0.1', 'port': 5000, 'threads': 8, 'ui_port': 4200, **INSTALL_DEFAULTS}
 
 
 @pytest.fixture(autouse=True)
 def clean_environment(monkeypatch, tmp_path):
     """No NEVERDIE_* setting from the machine, and no file unless a test writes one."""
-    for variable in ('NEVERDIE_HOST', 'NEVERDIE_PORT', 'NEVERDIE_THREADS', 'NEVERDIE_UI_PORT', 'NEVERDIE_CONFIG'):
+    for variable in [entry[2] for entry in config.SETTINGS.values()] + ['NEVERDIE_CONFIG']:
         monkeypatch.delenv(variable, raising=False)
     monkeypatch.setattr(config, 'DEFAULT_FILE', str(tmp_path / 'missing.yml'))
 
@@ -37,7 +38,7 @@ def test_the_shipped_example_file_keeps_the_defaults(monkeypatch):
 
 def test_reads_the_configuration_file(tmp_path, monkeypatch):
     write(tmp_path, 'server:\n  host: 0.0.0.0\n  port: 8080\ndev:\n  ui_port: 4300\n', monkeypatch)
-    assert config.load() == {'host': '0.0.0.0', 'port': 8080, 'threads': 8, 'ui_port': 4300}
+    assert config.load() == {'host': '0.0.0.0', 'port': 8080, 'threads': 8, 'ui_port': 4300, **INSTALL_DEFAULTS}
 
 
 def test_default_file_location(tmp_path, monkeypatch):
@@ -50,7 +51,7 @@ def test_environment_beats_the_file_and_command_line_beats_both(tmp_path, monkey
     write(tmp_path, 'server:\n  port: 8080\n  threads: 4\n', monkeypatch)
     monkeypatch.setenv('NEVERDIE_PORT', '9090')
     monkeypatch.setenv('NEVERDIE_HOST', '  ')  # blank: ignored
-    assert config.load() == {'host': '127.0.0.1', 'port': 9090, 'threads': 4, 'ui_port': 4200}
+    assert config.load() == {'host': '127.0.0.1', 'port': 9090, 'threads': 4, 'ui_port': 4200, **INSTALL_DEFAULTS}
     assert config.load({'port': '7070', 'host': None})['port'] == 7070
 
 
@@ -93,7 +94,7 @@ def test_refuses_a_bad_environment_value(monkeypatch):
 
 def test_command_line_options(tmp_path, monkeypatch):
     write(tmp_path, 'server:\n  port: 8080\n', monkeypatch)
-    assert server_settings([]) == {'host': '127.0.0.1', 'port': 8080, 'threads': 8, 'ui_port': 4200}
+    assert server_settings([]) == {'host': '127.0.0.1', 'port': 8080, 'threads': 8, 'ui_port': 4200, **INSTALL_DEFAULTS}
     assert server_settings(['-H', '0.0.0.0', '-P', '6000', '-t', '2'])['port'] == 6000
 
 

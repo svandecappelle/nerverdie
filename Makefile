@@ -4,7 +4,15 @@ else
 PYTHON ?= python3
 endif
 
-.PHONY: serve serve-api venv run
+.PHONY: serve serve-api venv run install uninstall
+
+## Production install on Linux: nginx with HTTPS serving the built UI, the app as a systemd service
+install:
+	$(PYTHON) scripts/install.py
+
+## Remove what make install added (keeps the certificates, the database and .venv)
+uninstall:
+	$(PYTHON) scripts/install.py --uninstall
 
 ## Create or update .venv with pip (dependencies and dev tools)
 venv:

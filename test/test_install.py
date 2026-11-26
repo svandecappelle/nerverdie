@@ -1,0 +1,192 @@
+"""scripts/install.py: production install behind nginx (rendering, checks, dry run)."""
+import json
+import os
+import sys
+
+import pytest
+
+from scripts import install
+from server.settings import config
+from server.settings.security import CONTENT_SECURITY_POLICY
+
+SETTINGS = {'host': '127.0.0.1', 'port': 5000, 'threads': 8, 'ui_port': 4200, 'server_name': 'monitor.example.com',
+            'http_port': 80, 'https_port': 443, 'certificate': 'self-signed', 'email': ''}
+
+
+def settings(**changes):
+    return dict(SETTINGS, **changes)
+
+
+def test_certificate_names_and_alt_names():
+    assert install.certificate_names('monitor.example.com') == ['monitor.example.com', 'localhost', '127.0.0.1', '::1']
+    assert install.certificate_names('127.0.0.1') == ['127.0.0.1', 'localhost', '::1']
+    assert install.subject_alt_names(['web', '10.0.0.2', '::1']) == 'DNS:web,IP:10.0.0.2,IP:::1'
+
+
+def test_parse_nginx_version():
+    assert install.parse_nginx_version('nginx version: nginx/1.24.0 (Ubuntu)') == (1, 24, 0)
+    assert install.parse_nginx_version('nothing') is None
+
+
+def test_site_and_backend_urls():
+    assert install.site_url('monitor.example.com', 443) == 'https://monitor.example.com/'
+    assert install.site_url('fe80::1', 8443) == 'https://[fe80::1]:8443/'
+    assert install.backend_url('0.0.0.0', 5000) == 'http://127.0.0.1:5000'
+    assert install.backend_url('::', 5001) == 'http://[::1]:5001'
+
+
+def test_nginx_site_redirects_to_https_and_forwards_the_api():
+    site = install.render_nginx(settings(port=5050), '/tls/c.crt', '/tls/c.key', (1, 26, 0))
+    assert 'server_name monitor.example.com;' in site
+    assert 'return 301 https://$host$request_uri;' in site
+    assert 'listen 443 ssl;' in site and 'http2 on;' in site and 'listen [::]:443 ssl;' in site
+    assert 'ssl_certificate /tls/c.crt;' in site and 'ssl_certificate_key /tls/c.key;' in site
+    assert 'location ^~ /api/ {' in site and 'proxy_pass http://127.0.0.1:5050;' in site
+    assert 'root %s;' % install.WEB_ROOT in site
+    assert 'try_files $uri $uri/ /index.html;' in site
+    # Same headers as the app on every location that serves files (add_header is not inherited).
+    assert site.count('add_header Content-Security-Policy "%s" always;' % CONTENT_SECURITY_POLICY) == 3
+    assert site.count('Strict-Transport-Security') == 3
+    assert 'TLSv1.2 TLSv1.3' in site and 'TLSv1 ' not in site
+
+
+def test_nginx_site_with_other_ports_old_nginx_and_no_ipv6():
+    site = install.render_nginx(settings(http_port=8080, https_port=8443), 'c', 'k', (1, 18, 0), ipv6=False)
+    assert 'listen 8080;' in site and 'listen 8443 ssl http2;' in site
+    assert 'http2 on;' not in site and '[::]' not in site
+    assert 'return 301 https://$host:8443$request_uri;' in site
+
+
+def test_service_runs_the_app_behind_the_proxy(monkeypatch, tmp_path):
+    monkeypatch.setenv('NEVERDIE_DB', 'data/db.sqlite')
+    monkeypatch.setenv('NEVERDIE_PORT', '5050')
+    monkeypatch.setenv('NEVERDIE_SECRET_KEY', 'secret')
+    env = install.service_environment(os.environ, str(tmp_path))
+    assert env['NEVERDIE_COOKIE_SECURE'] == '1' and env['NEVERDIE_TRUSTED_PROXIES'] == '1'
+    assert env['NEVERDIE_DB'] == os.path.join(str(tmp_path), 'data', 'db.sqlite')
+    assert env['NEVERDIE_PORT'] == '5050'
+    assert 'NEVERDIE_SECRET_KEY' not in env  # the unit file is world readable
+
+    unit = install.render_service('bob', '/srv/neverdie/.venv/bin/python', {'NEVERDIE_DB': '/data/50%"x'})
+    assert 'User=bob' in unit
+    assert 'WorkingDirectory=%s\n' % install.ROOT.replace('%', '%%') in unit
+    assert 'Environment="NEVERDIE_DB=/data/50%%\\"x"' in unit
+    assert 'ExecStart="/srv/neverdie/.venv/bin/python" "' in unit
+    with pytest.raises(install.InstallError, match='line break'):
+        install.render_service('bob', '/usr/bin/python', {'X': 'a\nb'})
+
+
+@pytest.mark.parametrize('changes, message', [
+    ({'server_name': '203.0.113.7'}, 'public domain name'),
+    ({'server_name': 'monitor'}, 'public domain name'),
+    ({'server_name': 'monitor.local'}, 'public domain name'),
+    ({'http_port': 8080}, 'port 80'),
+])
+def test_letsencrypt_needs_a_public_domain_on_port_80(changes, message):
+    with pytest.raises(install.InstallError, match=message):
+        install.check_letsencrypt(settings(certificate='letsencrypt', **changes))
+
+
+def test_letsencrypt_accepts_a_domain():
+    install.check_letsencrypt(settings(certificate='letsencrypt'))
+
+
+@pytest.fixture
+def clean_config(monkeypatch, tmp_path):
+    for name in (entry[2] for entry in config.SETTINGS.values()):
+        monkeypatch.delenv(name, raising=False)
+    monkeypatch.delenv('NEVERDIE_CONFIG', raising=False)
+    monkeypatch.setattr(config, 'DEFAULT_FILE', str(tmp_path / 'missing.yml'))
+
+
+def test_install_settings_of_the_configuration(clean_config, monkeypatch, tmp_path):
+    path = tmp_path / 'neverdie.yml'
+    path.write_text('install:\n  server_name: Monitor.Example.com\n  https_port: 8443\n'
+                    '  certificate: letsencrypt\n  email: ops@example.com\n')
+    monkeypatch.setenv('NEVERDIE_CONFIG', str(path))
+    values = config.load()
+    assert (values['server_name'], values['https_port'], values['certificate'], values['email']) == \
+        ('monitor.example.com', 8443, 'letsencrypt', 'ops@example.com')
+    assert config.load()['http_port'] == 80
+
+
+@pytest.mark.parametrize('variable, value, message', [
+    ('NEVERDIE_SERVER_NAME', 'evil.com; include /etc/passwd', 'server_name must be a host name'),
+    ('NEVERDIE_SERVER_NAME', 'a b', 'server_name must be a host name'),
+    ('NEVERDIE_CERTIFICATE', 'acme', 'certificate must be one of'),
+    ('NEVERDIE_LETSENCRYPT_EMAIL', 'not-an-email', 'email must be an e-mail address'),
+    ('NEVERDIE_HTTPS_PORT', '0', 'https_port must be a whole number'),
+    ('NEVERDIE_HOST', '127.0.0.1;', 'the host must be an address'),
+])
+def test_refuses_install_values_that_could_break_nginx(clean_config, monkeypatch, variable, value, message):
+    monkeypatch.setenv(variable, value)
+    with pytest.raises(config.ConfigError, match=message):
+        config.load()
+
+
+def test_runs_only_on_linux_and_not_as_root(monkeypatch):
+    monkeypatch.setattr(install.sys, 'platform', 'win32')
+    with pytest.raises(SystemExit, match='on Linux'):
+        install.main([])
+    monkeypatch.setattr(install.sys, 'platform', 'linux')
+    monkeypatch.setattr(install.os, 'geteuid', lambda: 0, raising=False)
+    with pytest.raises(SystemExit, match='not as root'):
+        install.main([])
+
+
+@pytest.fixture
+def dry_run(clean_config, monkeypatch, tmp_path):
+    """A dry run that reads the configuration with this Python and writes to tmp_path/out."""
+    monkeypatch.setattr(install, 'ensure_venv', lambda: sys.executable)
+    monkeypatch.setattr(install, 'nginx_layout', lambda installer: (install.CONF_D + '/neverdie.conf', None))
+    monkeypatch.setattr(install, 'STATE', str(tmp_path / 'install.json'))
+    monkeypatch.setenv('NEVERDIE_SERVER_NAME', 'monitor.example.com')
+    monkeypatch.setenv('NEVERDIE_HTTPS_PORT', '8443')
+    return tmp_path / 'out'
+
+
+def test_dry_run_writes_the_files_and_changes_nothing(dry_run, capsys):
+    assert install.main(['--dry-run', str(dry_run)]) == 0
+    output = capsys.readouterr().out
+
+    site = (dry_run / 'neverdie.conf').read_text()
+    assert 'server_name monitor.example.com;' in site and 'listen 8443 ssl' in site
+    assert 'ExecStart=' in (dry_run / 'neverdie.service').read_text()
+    state = json.loads((dry_run / 'install.json').read_text())
+    assert state['server_name'] == 'monitor.example.com' and state['certificate'] == 'self-signed'
+    assert 'subjectAltName=DNS:monitor.example.com,DNS:localhost,IP:127.0.0.1,IP:::1' in output
+    assert 'would run: systemctl restart neverdie' in output
+    assert 'nothing was changed' in output
+
+
+def test_dry_run_refuses_a_bad_configuration(dry_run, monkeypatch):
+    monkeypatch.setenv('NEVERDIE_HTTPS_PORT', '5000')
+    with pytest.raises(SystemExit, match='server.port'):
+        install.main(['--dry-run', str(dry_run)])
+    monkeypatch.setenv('NEVERDIE_HTTPS_PORT', '80')
+    with pytest.raises(SystemExit, match='must differ'):
+        install.main(['--dry-run', str(dry_run)])
+
+
+def test_dry_run_with_letsencrypt_checks_the_domain_first(dry_run, monkeypatch):
+    monkeypatch.setenv('NEVERDIE_CERTIFICATE', 'letsencrypt')
+    monkeypatch.setenv('NEVERDIE_SERVER_NAME', 'monitor.local')
+    with pytest.raises(SystemExit, match='public domain name'):
+        install.main(['--dry-run', str(dry_run)])
+
+
+def test_uninstall_removes_what_install_recorded(dry_run, tmp_path, capsys):
+    (tmp_path / 'install.json').write_text(json.dumps({
+        'site': '/etc/nginx/sites-available/neverdie', 'link': '/etc/nginx/sites-enabled/neverdie',
+        'service': install.SERVICE_FILE, 'web_root': install.WEB_ROOT, 'disabled_default_site': False}))
+    assert install.main(['--uninstall', '--dry-run', str(dry_run)]) == 0
+    output = capsys.readouterr().out
+    for command in ('systemctl disable --now neverdie', 'rm -f /etc/systemd/system/neverdie.service',
+                    'rm -f /etc/nginx/sites-enabled/neverdie', 'rm -f /etc/nginx/sites-available/neverdie',
+                    'rm -rf /var/www/neverdie'):
+        assert 'would run: ' + command in output
+
+
+def test_uninstall_without_install(dry_run, capsys):
+    assert install.main(['--uninstall', '--dry-run', str(dry_run)]) == 0
+    assert 'nothing to remove' in capsys.readouterr().out

@@ -98,6 +98,64 @@ jobs:
           if [ -x .venv/bin/python ]; then py=.venv/bin/python; else py=.venv/Scripts/python.exe; fi
           "$py" -m pytest
 
+  install:
+    name: make install (nginx, HTTPS, systemd)
+    runs-on: ubuntu-latest
+    env:
+      NEVERDIE_SERVER_NAME: monitor.test
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: client/package-lock.json
+
+      # Installs nginx when missing, builds the UI, creates the self-signed
+      # certificate, the nginx site and the systemd service, then checks the site.
+      - name: make install
+        run: make install
+
+      - name: The site answers over HTTPS
+        run: |
+          set -x
+          test "$(curl -s -o /dev/null -w '%{http_code}' http://127.0.0.1/)" = 301
+          # The certificate is valid for the server name.
+          curl -sSf --cacert /etc/neverdie/tls/neverdie.crt --resolve monitor.test:443:127.0.0.1 \
+            https://monitor.test/ | grep -q '<app-root'
+          curl -sSkI https://127.0.0.1/ | grep -qi '^content-security-policy:'
+          curl -sSkI https://127.0.0.1/ | grep -qi '^strict-transport-security:'
+          test "$(curl -sk -o /dev/null -w '%{http_code}' https://127.0.0.1/api/auth)" = 401
+          test "$(curl -sk -o /dev/null -w '%{http_code}' https://127.0.0.1/dashboard)" = 200
+          systemctl is-active neverdie
+
+      - name: make install again (update) keeps the certificate
+        run: |
+          before=$(sha256sum /etc/neverdie/tls/neverdie.crt)
+          make install
+          test "$before" = "$(sha256sum /etc/neverdie/tls/neverdie.crt)"
+
+      - name: make uninstall
+        run: |
+          make uninstall
+          ! systemctl is-active neverdie
+          test ! -e /var/www/neverdie
+          test ! -e /etc/systemd/system/neverdie.service
+
+      - name: Logs
+        if: failure()
+        run: |
+          sudo journalctl -u neverdie -n 100 --no-pager || true
+          sudo journalctl -u nginx -n 50 --no-pager || true
+          sudo nginx -T || true
+
   client:
     name: Client (audit, lint, tests, build, e2e)
     runs-on: ubuntu-latest

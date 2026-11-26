@@ -18,6 +18,21 @@ server:
   # Request threads of the waitress server (1 to 256).
   # threads: 8
 
+install:
+  # Production install behind nginx with HTTPS (`make install`, see README).
+  # Name of the site (host name or IP address); default: the name of this machine.
+  # server_name: monitor.example.com
+
+  # Ports of nginx; HTTP redirects to HTTPS.
+  # http_port: 80
+  # https_port: 443
+
+  # self-signed (default), or letsencrypt for a public domain name with port 80 open.
+  # certificate: self-signed
+
+  # Let's Encrypt account e-mail (expiry notices), optional.
+  # email: ops@example.com
+
 dev:
   # Port of the Angular dev server started by `make serve`
   # (it forwards /api to the port above).

@@ -4,7 +4,9 @@
 
 Each setting comes from, by priority:
 1. the command line (start.py -H / -P / -t);
-2. an environment variable (NEVERDIE_HOST, NEVERDIE_PORT, NEVERDIE_THREADS, NEVERDIE_UI_PORT);
+2. an environment variable (NEVERDIE_HOST, NEVERDIE_PORT, NEVERDIE_THREADS, NEVERDIE_UI_PORT,
+   and for `make install` NEVERDIE_SERVER_NAME, NEVERDIE_HTTP_PORT, NEVERDIE_HTTPS_PORT,
+   NEVERDIE_CERTIFICATE, NEVERDIE_LETSENCRYPT_EMAIL);
 3. the configuration file: NEVERDIE_CONFIG, or etc/neverdie.yml by default;
 4. the defaults below.
 
@@ -13,6 +15,7 @@ Each setting comes from, by priority:
 
 import json
 import os
+import re
 import sys
 
 import yaml
@@ -27,8 +30,20 @@ SETTINGS = {
     'threads': ('server', 'threads', 'NEVERDIE_THREADS', 8),
     # Port of the Angular dev server started by `make serve`.
     'ui_port': ('dev', 'ui_port', 'NEVERDIE_UI_PORT', 4200),
+    # Production install behind nginx (`make install`, scripts/install.py).
+    # Empty server name: the name of this machine.
+    'server_name': ('install', 'server_name', 'NEVERDIE_SERVER_NAME', ''),
+    'http_port': ('install', 'http_port', 'NEVERDIE_HTTP_PORT', 80),
+    'https_port': ('install', 'https_port', 'NEVERDIE_HTTPS_PORT', 443),
+    'certificate': ('install', 'certificate', 'NEVERDIE_CERTIFICATE', 'self-signed'),
+    'email': ('install', 'email', 'NEVERDIE_LETSENCRYPT_EMAIL', ''),
 }
 MAX_THREADS = 256
+CERTIFICATES = ('self-signed', 'letsencrypt')
+# Written into the nginx configuration and the certificate: no spaces, quotes or semicolons.
+SERVER_NAME = re.compile(r'^(?:[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?\.)*'
+                         r'[A-Za-z0-9](?:[A-Za-z0-9-]{0,61}[A-Za-z0-9])?$|^[0-9A-Fa-f:]+$')
+EMAIL = re.compile(r'^[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}$')
 
 
 class ConfigError(ValueError):
@@ -79,10 +94,27 @@ def read_file(path, required=False):
 def check(name, value, origin):
     """Validated value of a setting; `origin` names where it comes from in errors."""
     if name == 'host':
-        if not isinstance(value, str) or not value.strip():
+        # Also written into the nginx configuration by make install.
+        if not isinstance(value, str) or not SERVER_NAME.match(value.strip()):
             raise ConfigError('%s: the host must be an address such as 127.0.0.1, got %r' % (origin, value))
         return value.strip()
-    limits = {'port': (1, 65535), 'ui_port': (1, 65535), 'threads': (1, MAX_THREADS)}[name]
+    if name == 'server_name':
+        text = '' if value is None else str(value).strip()
+        if text and (len(text) > 253 or not SERVER_NAME.match(text)):
+            raise ConfigError('%s: server_name must be a host name such as monitor.example.com or an IP address, '
+                              'got %r' % (origin, value))
+        return text.lower()
+    if name == 'certificate':
+        text = str(value).strip().lower()
+        if text not in CERTIFICATES:
+            raise ConfigError('%s: certificate must be one of %s, got %r' % (origin, ', '.join(CERTIFICATES), value))
+        return text
+    if name == 'email':
+        text = '' if value is None else str(value).strip()
+        if text and not EMAIL.match(text):
+            raise ConfigError('%s: email must be an e-mail address, got %r' % (origin, value))
+        return text
+    limits = (1, MAX_THREADS) if name == 'threads' else (1, 65535)
     if isinstance(value, bool):
         number = None
     elif isinstance(value, int):
